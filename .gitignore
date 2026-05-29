@@ -1,0 +1,67 @@
+```gitignore
+# =========================
+# Node.js
+# =========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+
+# =========================
+# Environment Variables
+# =========================
+.env
+.env.local
+
+# =========================
+# Logs
+# =========================
+logs/
+*.log
+
+# =========================
+# OS / Editor
+# =========================
+.DS_Store
+Thumbs.db
+.vscode/settings.json
+
+# =========================
+# Data
+# =========================
+data/*.json
+data/*.csv
+
+# Keep folder structure
+!data/.gitkeep
+
+# =========================
+# Build / Cache
+# =========================
+dist/
+build/
+.cache/
+
+# =========================
+# Python Notebook
+# =========================
+.ipynb_checkpoints/
+
+# =========================
+# Coverage
+# =========================
+coverage/
+htmlcov/
+```
