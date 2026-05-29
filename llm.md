@@ -2,11 +2,7 @@
 
 ## 一、專案名稱（暫定）
 
-* Chronos Trader
-* Insight Flow
-* Trade Memory
-* Market Replay AI
-* Signal Archive
+* Chronos
 
 ---
 
