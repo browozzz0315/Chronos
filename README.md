@@ -1,13 +1,171 @@
-```md
-# Chronos Trader
+# ⚡ Chronos
 
-AI-assisted cryptocurrency market research platform.
+> AI 輔助加密貨幣研究與策略驗證平台
 
-## Goals
+Chronos 是一個小型研究型 Side Project，目標是建立一套「可記錄、可驗證、可持續優化」的系統化看盤流程。
 
-- Market data collection
-- Signal validation
-- Strategy analysis
-- LLM collaboration
-- Long-term market research
+**這不是自動交易機器人。** 核心價值在於：把每一個交易判斷記錄下來，事後驗證它是否真的有統計優勢。
+
+---
+
+## 功能概覽
+
+- **自動抓取** Binance K 線資料（1h / 4h / 1d，支援多幣種）
+- **計算技術指標**：EMA20/50/200、RSI14、MACD、ATR、ADX、Bollinger Bands
+- **市場狀態分類**：趨勢盤 / 震盪盤 / 高低波動，確保策略在正確環境下統計
+- **規則型訊號產生**：三個策略（趨勢順勢做多/空、超賣反彈）
+- **延遲驗證系統**：自動計算每筆訊號的 R 倍數、MFE、MAE、出場原因
+- **Dashboard**：視覺化策略績效、訊號列表、K 線圖
+
+---
+
+## 快速開始
+
+### 環境需求
+
+- Node.js >= 18
+- 網路連線（Binance 公開 API，無需 API Key）
+
+### 安裝
+
+```bash
+git clone <repo-url>
+cd chronos/backend
+npm install
 ```
+
+### 執行流程
+
+```bash
+# 1. 抓取資料並計算指標（產生 data/btc_*.json）
+node src/scripts/fetchBTC.js
+
+# 2. 執行延遲驗證（產生 data/btc_1h_verified.json）
+node src/scripts/runVerification.js
+
+# 3. 啟動 Dashboard
+node src/scripts/dashboardServer.js
+# → 開啟瀏覽器：http://localhost:3001
+
+# 驗證訊號邏輯（不需網路，讀本地資料）
+node src/scripts/testSignals.js
+```
+
+---
+
+## 專案結構
+
+```
+chronos/
+├── backend/
+│   ├── public/
+│   │   └── index.html              # Dashboard 前端
+│   └── src/
+│       ├── scripts/
+│       │   ├── fetchBTC.js         # 抓資料入口
+│       │   ├── runVerification.js  # 執行驗證
+│       │   ├── testSignals.js      # 訊號邏輯測試
+│       │   └── dashboardServer.js  # HTTP Server（port 3001）
+│       ├── services/
+│       │   ├── binanceService.js   # Binance API 封裝
+│       │   ├── indicatorService.js # 技術指標計算
+│       │   ├── signalService.js    # 訊號產生策略
+│       │   └── verifyService.js    # 延遲驗證邏輯
+│       └── utils/
+│           └── saveJson.js         # 檔案儲存工具
+├── data/                           # 自動產生，勿手動編輯
+│   ├── btc_1h.json
+│   ├── btc_4h.json
+│   ├── btc_1d.json
+│   └── btc_1h_verified.json
+├── docs/
+├── llm.md                          # LLM 協作說明文件
+└── README.md
+```
+
+---
+
+## 技術指標說明
+
+| 指標 | 用途 |
+|---|---|
+| EMA 20/50/200 | 趨勢方向判斷（多頭排列 / 空頭排列） |
+| RSI 14 | 動能強弱，超買（>70）/ 超賣（<30） |
+| MACD | 動能方向確認（Histogram 正負） |
+| ATR 14 | 波動率，作為 SL/TP 計算基準 |
+| ADX 14 | 趨勢強度（>25 趨勢盤，<20 震盪盤） |
+| Bollinger Bands | 價格相對位置 |
+
+---
+
+## 訊號策略
+
+### TREND_LONG（趨勢順勢做多）
+EMA 多頭排列 + RSI 45~65 + 收盤在 EMA20 上方 + MACD 向上
+
+### TREND_SHORT（趨勢順勢做空）
+EMA 空頭排列 + RSI 35~55 + 收盤在 EMA20 下方 + MACD 向下
+
+### OVERSOLD_BOUNCE（超賣反彈）
+RSI < 30 + 成交量放大 + 大趨勢偏多（收盤在 EMA200 上方）
+
+---
+
+## 驗證系統
+
+每筆訊號使用 **ATR 倍數**定義止盈止損（跨幣種可比較）：
+
+| 價位 | 計算 | RR |
+|---|---|---|
+| SL | 進場價 ± 1.5 × ATR | — |
+| TP1 | 進場價 ± 1.5 × ATR | 1:1 |
+| TP2 | 進場價 ± 3.0 × ATR | 1:2 |
+| TP3 | 進場價 ± 4.5 × ATR | 1:3 |
+
+驗證結果記錄：
+- **outcome**：WIN_TP1 / WIN_TP2 / WIN_TP3 / LOSS / TIMEOUT_PROFIT / TIMEOUT_LOSS
+- **R 倍數**：+3 表示賺了 3R，-1 表示完整止損
+- **MFE**：Maximum Favorable Excursion（進場後最大有利波動）
+- **MAE**：Maximum Adverse Excursion（進場後最大不利波動）
+
+---
+
+## Dashboard
+
+啟動後訪問 `http://localhost:3001`
+
+| 區域 | 內容 |
+|---|---|
+| 左上 | 各策略勝率、平均 R、勝敗統計 |
+| 左下 | 訊號列表（點擊查看詳情） |
+| 右上 | K 線圖 + EMA 三線 + 訊號標記點 |
+| 右下 | 點擊訊號後顯示完整 SL/TP/MFE/MAE |
+
+---
+
+## 注意事項
+
+- 樣本數 < 50 筆時，勝率統計不具參考意義
+- 目前僅支援 BTCUSDT，多幣種支援在 Step 12 加入
+- 資料來源為 Binance 公開 API（與 BingX 有微小價差）
+- 本工具僅供研究用途，不構成投資建議
+
+---
+
+## 開發路線圖
+
+- [x] Step 6：多時間框架資料抓取
+- [x] Step 7：技術指標計算
+- [x] Step 8：規則型訊號產生
+- [x] Step 9：延遲驗證系統
+- [x] Step 10：Dashboard
+- [ ] Step 11：Cron Job 自動定時執行
+- [ ] Step 12：多幣種擴展（ETH、DOGE）
+- [ ] Step 13：LLM 整合（訊號解釋 / 每日報告）
+- [ ] Step 14：PostgreSQL 資料庫遷移
+
+---
+
+## License
+
+MIT

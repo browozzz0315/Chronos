@@ -1,676 +1,233 @@
-# AI 加密貨幣看盤研究系統企畫書（LLM 協作版）
+# Chronos — LLM 協作文件
 
-## 一、專案名稱（暫定）
-
-* Chronos
-
----
-
-# 二、專案背景與動機
-
-目前加密貨幣市場的交易流程，大多依賴：
-
-* 主觀判斷
-* 情緒反應
-* 臨場感覺
-* 社群訊號
-* 零散技術分析
-
-但實際交易時，常會出現以下問題：
-
-## 問題點
-
-### 1. 看盤流程缺乏系統化
-
-即使有自己的觀察方式，也很難：
-
-* 固定流程
-* 長期統計
-* 量化驗證
-
-導致每次判斷標準不一致。
+> 本文件專為 LLM（Claude 等）提供專案背景與協作脈絡。
+> 每次對話開始前請先閱讀此文件，以了解現況與規範。
 
 ---
 
-### 2. 無法驗證自己的判斷是否有效
+## 一、專案概述
 
-例如：
+**名稱**：Chronos
+**類型**：AI 輔助加密貨幣研究與策略驗證平台（Side Project）
+**目的**：建立「可記錄、可驗證、可持續優化」的系統化看盤流程，非自動交易機器人。
 
-* 「這邊感覺會突破」
-* 「這個型態很像要反轉」
-* 「這裡應該能做多」
+### 核心理念
 
-實際上：
-
-* 是否真的有優勢？
-* 勝率是多少？
-* RR 是否合理？
-* 哪些市場環境有效？
-
-通常沒有被完整記錄與驗證。
+- 不預測價格，而是**驗證策略是否有統計優勢**
+- 所有訊號需記錄「觸發當下的完整指標快照」，事後才能有意義地驗證
+- 市場狀態分類（趨勢盤 vs 震盪盤）是驗證的前提，否則勝率統計無效
+- MVP 嚴格控制範圍，不做真實下單、不做複雜 ML
 
 ---
 
-### 3. 人類容易受到情緒與市場波動影響
+## 二、目前開發進度（截至 2026-05-31）
 
-包含：
+### ✅ 已完成
 
-* FOMO
-* 恐慌止損
-* 追單
-* 提早平倉
-* 逆勢攤平
+| Step | 模組 | 說明 |
+|---|---|---|
+| 6 | `binanceService.js` | 抓取多時間框架 K 線（1h/4h/1d），300 根，OHLCV 全部轉 Float |
+| 7 | `indicatorService.js` | EMA20/50/200、RSI14、MACD、ATR14、ADX14、Bollinger Bands、市場狀態分類 |
+| 8 | `signalService.js` | 三個規則型策略：TREND_LONG / TREND_SHORT / OVERSOLD_BOUNCE |
+| 9 | `verifyService.js` | 延遲驗證：SL=1.5ATR、TP1/2/3=1.5/3/4.5ATR，計算 R 倍數、MFE、MAE |
+| 10 | `dashboardServer.js` + `index.html` | 純 Node http 伺服器，提供 API；HTML Dashboard 顯示圖表與訊號績效 |
 
-因此希望建立一套：
+### ⏳ 尚未完成
 
-「可記錄、可驗證、可持續優化」的 AI 輔助研究系統。
-
----
-
-# 三、專案核心目標
-
-本專案並非直接開發「自動交易機器人」。
-
-而是：
-
-## 建立一套 AI 輔助的加密貨幣研究與驗證平台
-
-核心目標包含：
-
-* 系統化看盤流程
-* 記錄 AI 與人類判斷
-* 延遲驗證結果
-* 分析策略有效性
-* 長期累積市場資料
-* 建立可迭代的研究環境
+| Step | 內容 | 優先順序 |
+|---|---|---|
+| 11 | Cron Job — 每小時自動抓資料 + 驗證 | 🔴 最高 |
+| 12 | 多幣種擴展（ETH、DOGE 等） | 🟡 中 |
+| 13 | LLM 整合 — 訊號解釋 / 每日報告 | 🟡 中 |
+| 14 | PostgreSQL 取代 JSON | 🟢 低（MVP 後期） |
 
 ---
 
-# 四、專案定位
+## 三、專案目錄結構
 
-## 類型
-
-* 小型 Side Project
-* 長期研究型專案
-* AI + 量化交易研究工具
-
----
-
-## 核心定位
-
-偏向：
-
-* 研究工具
-* 市場分析平台
-* 策略驗證系統
-
-而非：
-
-* 高頻交易系統
-* 完整量化交易平台
-* 真實資金自動交易系統
-
----
-
-# 五、研究市場
-
-## 主要市場
-
-* 加密貨幣（Crypto）
+```
+chronos/
+├── backend/
+│   ├── public/
+│   │   └── index.html              # Dashboard 前端
+│   └── src/
+│       ├── scripts/
+│       │   ├── fetchBTC.js         # 抓資料 + 計算指標 + 存檔
+│       │   ├── testSignals.js      # 驗證訊號邏輯（本地，不需網路）
+│       │   ├── runVerification.js  # 執行延遲驗證，存 btc_1h_verified.json
+│       │   └── dashboardServer.js  # HTTP API Server（port 3001）
+│       ├── services/
+│       │   ├── binanceService.js   # Binance API 封裝（fetchKlines, fetchMultiTimeframe）
+│       │   ├── indicatorService.js # 技術指標計算（純手寫，無外部依賴）
+│       │   ├── signalService.js    # 規則型訊號產生器
+│       │   └── verifyService.js    # 延遲驗證邏輯（calcLevels, verifySignal, summarize）
+│       └── utils/
+│           └── saveJson.js         # JSON 存檔工具（路徑：../../../data）
+├── data/
+│   ├── btc_1h.json                 # 300 根 1h K 線 + 指標
+│   ├── btc_4h.json                 # 200 根 4h K 線 + 指標
+│   ├── btc_1d.json                 # 200 根 1d K 線 + 指標
+│   └── btc_1h_verified.json        # 驗證結果（含 R 倍數、MFE、MAE）
+├── docs/
+├── llm.md                          # 本文件
+└── README.md                       # 使用者說明
+```
 
 ---
 
-## 初期研究標的
+## 四、關鍵設計決策與原因
 
-### 第一階段
+### 1. 為什麼不用外部套件計算指標？
+`indicatorService.js` 全部純手寫（EMA、RSI、MACD、ATR、ADX、BB）。
+原因：方便理解邏輯、無版本依賴問題、適合未來移植到其他語言。
 
-* BTCUSDT
-* ETHUSDT
+### 2. 為什麼 SL/TP 用 ATR 倍數而非固定點數？
+不同幣種波動率差距大（BTC ATR ≈ 500，DOGE ATR ≈ 0.003）。
+用 ATR 倍數才能讓跨幣種的 R 倍數具有可比性。
+- SL = 1.5 × ATR14
+- TP1 = 1.5 × ATR（RR 1:1）
+- TP2 = 3.0 × ATR（RR 1:2）
+- TP3 = 4.5 × ATR（RR 1:3）
 
-原因：
+### 3. 為什麼市場狀態分類這麼重要？
+同一個 RSI 超賣訊號，在趨勢盤（ADX > 25）和震盪盤（ADX < 20）的行為完全不同。
+混在一起統計勝率是無效資料。`classifyMarketState()` 在每根 K 線上標記狀態，驗證時一併記錄。
 
-* 流動性高
-* 資料完整
-* 雜訊相對較少
-* 適合建立初期模型
+### 4. 為什麼 MVP 用規則型訊號而非 ML？
+資料累積不足（< 500 筆）時，監督式 ML 會過擬合。
+先用規則型訊號累積標記資料，等 3-6 個月後再引入 XGBoost / Random Forest。
 
----
-
-## 未來擴展
-
-後續可加入：
-
-* SOL
-* XRP
-* DOGE
-* AI 類代幣
-* Meme Coin
-
----
-
-# 六、研究策略方向
-
-## 1. 趨勢追蹤（Trend Following）
-
-研究內容：
-
-* EMA 趨勢
-* 多時間框架方向
-* Breakout Follow
-* Pullback Entry
-
-目標：
-
-* 找出高機率順勢區間
+### 5. 路徑規範
+所有 scripts 在 `backend/src/scripts/`，往上三層才是根目錄。
+- 讀寫 data/：`path.join(__dirname, "../../../data", filename)`
+- 引用 services：`require("../services/serviceName")`
+- 引用 utils：`require("../utils/utilName")`
 
 ---
 
-## 2. 突破策略（Breakout）
+## 五、訊號策略說明
 
-研究內容：
+### TREND_LONG（趨勢順勢做多）
+```
+條件：
+  EMA20 > EMA50 > EMA200（多頭排列）
+  RSI 在 45~65（動能健康，不追高）
+  收盤 > EMA20（在均線上方）
+  MACD Histogram > 0（動能向上）
+  ADX >= 20（有趨勢）
+```
 
-* 區間突破
-* 成交量放大
-* 波動率擴張
-* 假突破檢測
+### TREND_SHORT（趨勢順勢做空）
+```
+條件：
+  EMA20 < EMA50 < EMA200（空頭排列）
+  RSI 在 35~55
+  收盤 < EMA20
+  MACD Histogram < 0
+  ADX >= 20
+```
 
-目標：
-
-* 驗證突破後延續性
-
----
-
-## 3. 反轉策略（Reversal）
-
-研究內容：
-
-* RSI 背離
-* 結構反轉
-* Momentum exhaustion
-* 急跌反彈
-
-目標：
-
-* 分析反轉型態成功率
-
----
-
-# 七、專案核心功能
-
-## Phase 1：資料收集與驗證系統（MVP）
-
-### 功能
-
-#### 1. 自動抓取市場資料
-
-資料來源：
-
-* Binance API
-* Bybit API
-
-收集：
-
-* K線資料
-* 成交量
-* RSI
-* MACD
-* EMA
-* Funding Rate
-* Open Interest
+### OVERSOLD_BOUNCE（超賣反彈做多）
+```
+條件：
+  RSI < 30（超賣）
+  成交量 > 20期均量 × 1.3（量能放大）
+  收盤 > EMA200（大趨勢仍偏多）
+  前一根為陰線（在跌勢中超賣）
+```
 
 ---
 
-#### 2. AI 訊號生成
+## 六、驗證系統輸出格式
 
-AI 依照策略規則產生：
-
-* LONG
-* SHORT
-* HOLD
-
-並附帶：
-
-* 信心分數
-* 判斷原因
-* 當前市場狀態
-
----
-
-#### 3. 延遲驗證系統
-
-例如：
-
-* 1h 後驗證
-* 4h 後驗證
-* 24h 後驗證
-
-紀錄：
-
-* 是否成功
-* 最大浮盈
-* 最大回撤
-* RR
-* 勝率
-
----
-
-#### 4. 歷史紀錄資料庫
-
-保存：
-
-* AI 判斷
-* 市場快照
-* 指標數據
-* 驗證結果
-
-作為未來模型訓練資料。
+每筆驗證後的訊號結構：
+```json
+{
+  "id": "TREND_SHORT_1748527200000",
+  "openTime": 1748527200000,
+  "symbol": "BTCUSDT",
+  "entryPrice": 75274.58,
+  "strategy": "TREND_SHORT",
+  "direction": "SHORT",
+  "conditions": { "ema_alignment": true, ... },
+  "snapshot": { "close": 75274.58, "rsi14": 42.1, ... },
+  "verification": {
+    "outcome": "WIN_TP3",
+    "exitPrice": 73514.8,
+    "exitReason": "TP3",
+    "exitBar": 7,
+    "rMultiple": 3.0,
+    "pnlPct": 2.338,
+    "tp1Hit": true,
+    "tp2Hit": true,
+    "tp3Hit": true,
+    "slHit": false,
+    "mfe": 2213.99,
+    "mae": 0,
+    "levels": { "sl": 75861.17, "tp1": 74687.99, "tp2": 74101.39, "tp3": 73514.8, "slDist": 586.59 }
+  }
+}
+```
 
 ---
 
-#### 5. 視覺化 Dashboard
+## 七、Dashboard API
 
-顯示：
+伺服器：`node src/scripts/dashboardServer.js`（port 3001，無需安裝 express）
 
-* AI 歷史勝率
-* 各策略績效
-* 市場環境分類
-* Long/Short 統計
-* 回測結果
-
----
-
-# 八、LLM 協作設計
-
-本專案將導入 LLM 協作機制。
-
-目的不是直接預測價格。
-
-而是：
-
-## 強化研究與分析流程。
+| Endpoint | 說明 |
+|---|---|
+| `GET /api/signals` | `btc_1h_verified.json` 全部訊號 |
+| `GET /api/klines` | `btc_1h.json`（只回傳 EMA200 有值的部分） |
+| `GET /api/summary` | 各策略勝率、平均 R 統計 |
 
 ---
 
-## LLM 可負責的任務
+## 八、目前樣本統計（2026-05-31）
 
-### 1. 市場狀態解釋
+| 策略 | 樣本數 | 勝率 | 平均 R |
+|---|---|---|---|
+| TREND_SHORT | 3 | 66.7% | +1.667 |
+| TREND_LONG | 0 | — | — |
+| OVERSOLD_BOUNCE | 0 | — | — |
 
-例如：
-
-* 趨勢盤
-* 震盪盤
-* 高波動區間
-* 假突破風險
-
----
-
-### 2. AI 判斷理由生成
-
-例如：
-
-> RSI 從超賣區反彈，且成交量增加，可能形成短期 reversal。
+⚠️ 樣本 < 5 筆，統計無意義。需累積 50+ 筆才可參考。
+根本原因：2026-05-18～05-31 BTC 整體空頭結構，多頭策略條件不成立。
 
 ---
 
-### 3. 自動生成研究報告
+## 九、LLM 協作時的注意事項
 
-例如：
-
-* 本週勝率
-* 哪種策略最有效
-* 哪個時間框架表現最好
-* 哪種市場最容易失敗
-
----
-
-### 4. 多 Agent 分析（未來）
-
-例如：
-
-#### Trend Agent
-
-專門分析趨勢。
-
-#### Reversal Agent
-
-專門分析反轉。
-
-#### Risk Agent
-
-專門評估風險。
-
-最後：
-
-* 多 Agent 投票
-* 綜合評分
-* 產出最終訊號
+1. **路徑寫法**：scripts 往上三層是根目錄（`../../../`），不是四層
+2. **指標 null 處理**：用 `== null`（同時涵蓋 undefined），不要用 `=== null`
+3. **資料型別**：Binance API 回傳 OHLCV 是 String，存檔前必須 `parseFloat()`
+4. **EMA200 需要 200 根暖機**：抓資料時 limit 設 300（1h）才有足夠的有效根數
+5. **新增幣種**：`signalService.js` 的 `"BTCUSDT"` 目前是硬寫，多幣種時需改成參數傳入
+6. **不要修改 data/ 下的 JSON**：這些是系統運行產出，應由腳本管理，不手動編輯
 
 ---
 
-# 九、系統架構設計
-
-## 架構方向
-
-Node.js 主系統 + Python AI Service
-
----
-
-## Node.js 負責
-
-### Backend API
-
-* 資料管理
-* 排程
-* Dashboard API
-* 使用者介面
-
----
-
-### 資料儲存
-
-* PostgreSQL
-* Redis（快取）
-
----
-
-### 排程
-
-* Cron Job
-* Queue System
-
----
-
-## Python Service 負責
-
-### AI / ML 模型
-
-例如：
-
-* XGBoost
-* Random Forest
-* LSTM
-* Transformer（未來）
-
----
-
-### 資料分析
-
-* 特徵工程
-* 模型訓練
-* 策略驗證
-
----
-
-# 十、技術選型（暫定）
-
-## Frontend
-
-* Next.js
-* React
-* TailwindCSS
-* TradingView Chart
-
----
-
-## Backend
-
-* Node.js
-* Express / NestJS
-
----
-
-## AI Service
-
-* Python
-* FastAPI
-
----
-
-## Database
-
-* PostgreSQL
-
----
-
-## AI/ML
-
-* pandas
-* scikit-learn
-* PyTorch（未來）
-
----
-
-# 十一、MVP 開發範圍
-
-## MVP 不做的事情
-
-避免專案過度膨脹。
-
-### 不做：
-
-* 真實自動下單
-* 高頻交易
-* 複雜深度學習
-* 多市場同步
-* 全自動資金管理
-
----
-
-## MVP 核心
-
-只專注：
-
-### 1. 收集資料
-
-### 2. AI 給出方向判斷
-
-### 3. 延遲驗證結果
-
-### 4. 統計與視覺化
-
----
-
-# 十二、研究價值
-
-本專案的價值不只是交易。
-
-更包含：
-
-## 1. AI 與市場研究
-
-研究：
-
-* AI 是否能有效辨識市場型態
-* 哪些訊號具有統計優勢
-
----
-
-## 2. 人類交易行為分析
-
-未來可分析：
-
-* 哪些情境容易追單
-* 哪些判斷最容易失敗
-* 哪種市場最容易情緒化
-
----
-
-## 3. 長期策略驗證
-
-建立：
-
-* 可持續驗證
-* 可迭代優化
-* 可回測分析
-
-的研究平台。
-
----
-
-# 十三、未來擴展方向
-
-## 1. 多 Agent 協作 AI
-
-讓不同 AI：
-
-* 討論市場
-* 投票
-* 互相反駁
-
----
-
-## 2. 新聞與情緒分析
-
-分析：
-
-* Twitter/X
-* Reddit
-* 新聞情緒
-* Fear & Greed
-
----
-
-## 3. Pattern Similarity Search
-
-讓 AI：
-
-* 尋找歷史相似走勢
-* 分析後續發展機率
-
----
-
-## 4. 自動研究報告
-
-每日生成：
-
-* 市場摘要
-* 勝率分析
-* 風險提醒
-
----
-
-## 5. 半自動交易系統
-
-未來可能：
-
-* AI 提供訊號
-* 人類確認
-* 系統協助執行
-
----
-
-# 十四、專案成果預期
-
-## 技術面
-
-* 熟悉 AI + Backend 整合
-* 熟悉資料分析流程
-* 熟悉金融市場資料處理
-* 建立完整研究架構
-
----
-
-## 研究面
-
-* 建立可驗證的看盤流程
-* 累積市場研究資料
-* 提升策略分析能力
-
----
-
-## 作品集面
-
-可作為：
-
-* AI 專案
-* 量化研究專案
-* Backend 架構作品
-* 長期 Side Project
-
-展示用途。
-
----
-
-# 十五、目前已知風險
-
-## 1. 市場高度不確定
-
-AI 不一定能穩定預測市場。
-
----
-
-## 2. 過度擬合風險
-
-模型可能：
-
-* 適合歷史
-* 不適合未來
-
----
-
-## 3. 資料品質問題
-
-加密貨幣：
-
-* 雜訊高
-* 假突破多
-* 市場變化快
-
----
-
-## 4. 專案規模膨脹
-
-容易：
-
-* 功能過多
-* AI 過度複雜
-* 難以完成
-
-因此 MVP 必須嚴格控制範圍。
-
----
-
-# 十六、結論
-
-本專案希望建立：
-
-「可驗證、可分析、可持續優化」的 AI 加密貨幣研究平台。
-
-核心不在於：
-
-* 神奇預測
-* 保證獲利
-* 全自動交易
-
-而是：
-
-建立一套真正能長期累積資料、驗證策略、研究市場的系統化流程。
-
-透過：
-
-* AI
-* LLM 協作
-* 市場資料分析
-* 長期驗證
-
-逐步建立屬於自己的研究工具與交易分析框架。
-
-## 專案架構
-
-chronos-trader/
-│
-├─ backend/
-│  ├─ src/
-│  ├─ package.json
-│
-├─ ai-service/
-│  ├─ app/
-│  ├─ requirements.txt
-│
-├─ data/
-│
-├─ docs/
-│
-├─ .gitignore
-│
-├─ README.md
+## 十、下一步待辦（LLM 協作用）
+
+### Step 11（下一個要做的）
+**自動定時抓資料（Cron Job）**
+- 套件：`node-cron`
+- 頻率：每小時一次（`0 * * * *`）
+- 動作：fetchBTC → calcIndicators → generateSignals → verifyAll → saveJson
+- 入口：新建 `src/scripts/cronJob.js`
+
+### Step 12
+**多幣種擴展**
+- 將 symbol 從硬寫改為參數
+- 支援：BTCUSDT、ETHUSDT、DOGEUSDT
+- 資料檔命名規則：`{symbol.toLowerCase()}_{tf}.json`
+
+### Step 13
+**LLM 整合**
+- 每個訊號觸發時呼叫 Claude API 生成自然語言解釋
+- 每日生成策略績效報告
+
+### Step 14
+**PostgreSQL 遷移**
+- 替換 JSON 存檔
+- 支援複雜查詢（跨幣種、跨時間框架統計）
