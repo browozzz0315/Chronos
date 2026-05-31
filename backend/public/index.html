@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chronos Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg:      #0d1117;
+    --surface: #161b22;
+    --border:  #30363d;
+    --text:    #e6edf3;
+    --muted:   #8b949e;
+    --green:   #3fb950;
+    --red:     #f85149;
+    --yellow:  #d29922;
+    --blue:    #58a6ff;
+    --purple:  #bc8cff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; }
+
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 24px; border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  header h1 { font-size: 18px; font-weight: 700; letter-spacing: 2px; color: var(--blue); }
+  header .meta { color: var(--muted); font-size: 12px; }
+  #lastUpdate { color: var(--green); }
+
+  .layout { display: grid; grid-template-columns: 280px 1fr; gap: 0; height: calc(100vh - 57px); }
+
+  /* ── 左側面板 ── */
+  .sidebar {
+    border-right: 1px solid var(--border);
+    overflow-y: auto; padding: 16px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .card-title { font-size: 11px; font-weight: 600; letter-spacing: 1px; color: var(--muted); text-transform: uppercase; margin-bottom: 12px; }
+
+  /* 統計卡 */
+  .stat-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-label { color: var(--muted); font-size: 12px; }
+  .stat-value { font-weight: 600; font-size: 13px; }
+  .green { color: var(--green); } .red { color: var(--red); } .yellow { color: var(--yellow); } .blue { color: var(--blue); }
+
+  /* 勝率條 */
+  .winrate-bar { height: 6px; background: var(--border); border-radius: 3px; margin-top: 8px; overflow: hidden; }
+  .winrate-fill { height: 100%; background: var(--green); border-radius: 3px; transition: width .5s ease; }
+
+  /* 訊號列表 */
+  .signal-item {
+    padding: 10px; border-radius: 6px; border: 1px solid var(--border);
+    margin-bottom: 8px; cursor: pointer; transition: border-color .2s;
+  }
+  .signal-item:hover { border-color: var(--blue); }
+  .signal-item.selected { border-color: var(--blue); background: rgba(88,166,255,.08); }
+  .signal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .signal-strategy { font-size: 11px; font-weight: 700; letter-spacing: .5px; }
+  .signal-outcome { font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 3px; }
+  .outcome-WIN_TP3, .outcome-WIN_TP2, .outcome-WIN_TP1  { background: rgba(63,185,80,.2); color: var(--green); }
+  .outcome-LOSS                                           { background: rgba(248,81,73,.2); color: var(--red); }
+  .outcome-TIMEOUT_PROFIT                                 { background: rgba(210,153,34,.2); color: var(--yellow); }
+  .outcome-TIMEOUT_LOSS                                   { background: rgba(248,81,73,.1); color: var(--red); }
+  .signal-meta { font-size: 11px; color: var(--muted); }
+  .signal-r { font-size: 13px; font-weight: 700; }
+
+  /* ── 主區域 ── */
+  .main { display: flex; flex-direction: column; overflow: hidden; }
+  .chart-area { flex: 1; padding: 16px; min-height: 0; }
+  canvas { width: 100% !important; }
+
+  /* 詳情面板 */
+  .detail-panel {
+    border-top: 1px solid var(--border); padding: 16px 24px;
+    background: var(--surface); display: none;
+  }
+  .detail-panel.show { display: block; }
+  .detail-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .detail-item .label { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+  .detail-item .value { font-size: 14px; font-weight: 600; }
+
+  /* 空狀態 */
+  .empty { text-align: center; padding: 40px; color: var(--muted); }
+  .empty code { background: var(--border); padding: 2px 6px; border-radius: 3px; font-size: 12px; }
+
+  /* Loading */
+  #loading { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 100; }
+  #loading p { color: var(--muted); font-size: 13px; margin-top: 12px; text-align: center; }
+  .spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .direction-LONG  { color: var(--green); }
+  .direction-SHORT { color: var(--red); }
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div>
+    <div class="spinner"></div>
+    <p>載入資料中...</p>
+  </div>
+</div>
+
+<header>
+  <h1>⚡ CHRONOS</h1>
+  <div class="meta">BTCUSDT · 1H · 最後更新：<span id="lastUpdate">—</span></div>
+</header>
+
+<div class="layout">
+  <!-- 左側：統計 + 訊號列表 -->
+  <div class="sidebar">
+    <!-- 策略績效 -->
+    <div class="card" id="summaryCard">
+      <div class="card-title">策略績效</div>
+      <div id="summaryContent"><div class="empty">載入中...</div></div>
+    </div>
+
+    <!-- 訊號列表 -->
+    <div class="card" style="flex:1">
+      <div class="card-title">訊號記錄</div>
+      <div id="signalList"><div class="empty">載入中...</div></div>
+    </div>
+  </div>
+
+  <!-- 右側：圖表 + 詳情 -->
+  <div class="main">
+    <div class="chart-area">
+      <canvas id="priceChart"></canvas>
+    </div>
+    <div class="detail-panel" id="detailPanel">
+      <div class="detail-grid" id="detailGrid"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = 'http://localhost:3001';
+let priceChart = null;
+let allSignals = [];
+let allKlines  = [];
+
+// ── fetch helpers ──
+async function fetchJson(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+// ── 格式化 ──
+function fmtTime(ms) {
+  return new Date(ms).toISOString().replace('T',' ').slice(0,16) + ' UTC';
+}
+function fmtR(r) {
+  if (r == null) return '—';
+  return (r > 0 ? '+' : '') + r + 'R';
+}
+function outcomeLabel(o) {
+  const map = {
+    WIN_TP3: '✅ TP3', WIN_TP2: '✅ TP2', WIN_TP1: '✅ TP1',
+    LOSS: '❌ SL', TIMEOUT_PROFIT: '🟡 逾時盈', TIMEOUT_LOSS: '🔴 逾時虧',
+  };
+  return map[o] || o;
+}
+
+// ── 渲染策略統計 ──
+function renderSummary(summary) {
+  if (!summary || !Object.keys(summary).length) {
+    document.getElementById('summaryContent').innerHTML =
+      '<div class="empty">尚無資料<br><code>runVerification.js</code></div>';
+    return;
+  }
+  let html = '';
+  for (const [name, s] of Object.entries(summary)) {
+    const rClass = s.avgR >= 0 ? 'green' : 'red';
+    html += `
+      <div style="margin-bottom:12px">
+        <div style="font-size:11px;font-weight:700;margin-bottom:6px">${name}</div>
+        <div class="stat-row"><span class="stat-label">樣本數</span><span class="stat-value">${s.total} 筆${s.total < 5 ? ' ⚠️' : ''}</span></div>
+        <div class="stat-row"><span class="stat-label">勝 / 敗</span><span class="stat-value"><span class="green">${s.wins}</span> / <span class="red">${s.losses}</span></span></div>
+        <div class="stat-row"><span class="stat-label">勝率</span><span class="stat-value ${s.winRate >= 50 ? 'green' : 'red'}">${s.winRate}%</span></div>
+        <div class="stat-row"><span class="stat-label">平均R</span><span class="stat-value ${rClass}">${s.avgR > 0 ? '+' : ''}${s.avgR}</span></div>
+        <div class="winrate-bar"><div class="winrate-fill" style="width:${s.winRate}%"></div></div>
+      </div>`;
+  }
+  document.getElementById('summaryContent').innerHTML = html;
+}
+
+// ── 渲染訊號列表 ──
+function renderSignalList(signals) {
+  if (!signals.length) {
+    document.getElementById('signalList').innerHTML =
+      '<div class="empty">尚無訊號<br><code>fetchBTC.js</code> → <code>runVerification.js</code></div>';
+    return;
+  }
+  // 最新的排前面
+  const sorted = [...signals].reverse();
+  let html = '';
+  for (const sig of sorted) {
+    const v = sig.verification;
+    const outcome = v?.outcome ?? 'PENDING';
+    const r = v?.rMultiple;
+    const rClass = r > 0 ? 'green' : r < 0 ? 'red' : 'yellow';
+    html += `
+      <div class="signal-item" data-id="${sig.id}" onclick="selectSignal('${sig.id}')">
+        <div class="signal-header">
+          <span class="signal-strategy direction-${sig.direction}">${sig.direction} · ${sig.strategy.replace('TREND_','')}</span>
+          <span class="signal-outcome outcome-${outcome}">${outcomeLabel(outcome)}</span>
+        </div>
+        <div class="signal-meta">${fmtTime(sig.openTime)}</div>
+        <div style="display:flex;justify-content:space-between;margin-top:4px">
+          <span class="stat-label">@${sig.entryPrice.toLocaleString()}</span>
+          <span class="signal-r ${rClass}">${fmtR(r)}</span>
+        </div>
+      </div>`;
+  }
+  document.getElementById('signalList').innerHTML = html;
+}
+
+// ── 選取訊號 → 顯示詳情 + 在圖表標記 ──
+function selectSignal(id) {
+  document.querySelectorAll('.signal-item').forEach(el => el.classList.remove('selected'));
+  document.querySelector(`[data-id="${id}"]`)?.classList.add('selected');
+
+  const sig = allSignals.find(s => s.id === id);
+  if (!sig) return;
+
+  const v = sig.verification;
+  const panel = document.getElementById('detailPanel');
+  panel.classList.add('show');
+
+  const items = [
+    { label: '進場價',   value: sig.entryPrice?.toLocaleString() },
+    { label: '出場價',   value: v?.exitPrice?.toLocaleString() ?? '—' },
+    { label: '出場原因', value: v?.exitReason ?? '—' },
+    { label: '結果',     value: v?.outcome ?? '—', cls: v?.outcome?.startsWith('WIN') ? 'green' : v?.outcome === 'LOSS' ? 'red' : 'yellow' },
+    { label: 'R 倍數',   value: fmtR(v?.rMultiple), cls: v?.rMultiple > 0 ? 'green' : 'red' },
+    { label: 'PnL',      value: v?.pnlPct != null ? (v.pnlPct > 0 ? '+' : '') + v.pnlPct + '%' : '—', cls: v?.pnlPct > 0 ? 'green' : 'red' },
+    { label: 'MFE（最大浮盈）', value: v?.mfe?.toLocaleString() ?? '—' },
+    { label: 'MAE（最大回撤）', value: v?.mae?.toLocaleString() ?? '—' },
+    { label: 'SL',       value: v?.levels?.sl?.toLocaleString() ?? '—', cls: 'red' },
+    { label: 'TP1',      value: v?.levels?.tp1?.toLocaleString() ?? '—', cls: 'green' },
+    { label: 'TP2',      value: v?.levels?.tp2?.toLocaleString() ?? '—', cls: 'green' },
+    { label: 'TP3',      value: v?.levels?.tp3?.toLocaleString() ?? '—', cls: 'green' },
+  ];
+
+  document.getElementById('detailGrid').innerHTML = items.map(it =>
+    `<div class="detail-item"><div class="label">${it.label}</div><div class="value ${it.cls ?? ''}">${it.value}</div></div>`
+  ).join('');
+
+  // 在圖表上標記進場點
+  highlightSignalOnChart(sig);
+}
+
+// ── 繪製價格 + 指標圖 ──
+function renderChart(klines, signals) {
+  const labels   = klines.map(k => new Date(k.openTime).toISOString().slice(5,16).replace('T',' '));
+  const closes   = klines.map(k => k.close);
+  const ema20    = klines.map(k => k.indicators?.ema20  ?? null);
+  const ema50    = klines.map(k => k.indicators?.ema50  ?? null);
+  const ema200   = klines.map(k => k.indicators?.ema200 ?? null);
+
+  // 訊號標注
+  const signalPoints = klines.map(k => {
+    const sig = signals.find(s => s.openTime === k.openTime);
+    if (!sig) return null;
+    return { price: sig.entryPrice, direction: sig.direction, outcome: sig.verification?.outcome };
+  });
+
+  const pointColors = signalPoints.map(p => {
+    if (!p) return 'transparent';
+    if (p.outcome?.startsWith('WIN')) return '#3fb950';
+    if (p.outcome === 'LOSS')         return '#f85149';
+    return '#d29922';
+  });
+  const pointSizes = signalPoints.map(p => p ? 8 : 0);
+
+  if (priceChart) priceChart.destroy();
+
+  const ctx = document.getElementById('priceChart').getContext('2d');
+  priceChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Close', data: closes,
+          borderColor: '#58a6ff', borderWidth: 1.5,
+          pointRadius: pointSizes, pointBackgroundColor: pointColors,
+          pointHoverRadius: 6, tension: 0,
+          fill: false,
+        },
+        { label: 'EMA20',  data: ema20,  borderColor: '#3fb950', borderWidth: 1, pointRadius: 0, tension: 0, fill: false },
+        { label: 'EMA50',  data: ema50,  borderColor: '#d29922', borderWidth: 1, pointRadius: 0, tension: 0, fill: false },
+        { label: 'EMA200', data: ema200, borderColor: '#f85149', borderWidth: 1, pointRadius: 0, tension: 0, fill: false },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: '#8b949e', boxWidth: 20, font: { size: 11 } } },
+        tooltip: {
+          backgroundColor: '#161b22', borderColor: '#30363d', borderWidth: 1,
+          titleColor: '#e6edf3', bodyColor: '#8b949e',
+          callbacks: {
+            afterBody: (items) => {
+              const idx = items[0]?.dataIndex;
+              const sig = signalPoints[idx];
+              if (!sig) return '';
+              return `\n▶ ${sig.direction} Signal\n  ${sig.outcome ?? 'PENDING'}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#8b949e', maxTicksLimit: 12, font: { size: 10 } }, grid: { color: '#21262d' } },
+        y: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: '#21262d' } },
+      },
+    },
+  });
+}
+
+// ── 高亮圖表上的訊號點（未來擴充用，目前靠顏色區分）──
+function highlightSignalOnChart(sig) {
+  // 可在此加入 annotation 或縮放至進場點範圍
+}
+
+// ── 主初始化 ──
+async function init() {
+  try {
+    const [signals, klines, summary] = await Promise.all([
+      fetchJson(`${API}/api/signals`),
+      fetchJson(`${API}/api/klines`),
+      fetchJson(`${API}/api/summary`),
+    ]);
+
+    allSignals = signals;
+    allKlines  = klines;
+
+    const latest = klines[klines.length - 1];
+    document.getElementById('lastUpdate').textContent =
+      new Date(latest.openTime).toISOString().replace('T',' ').slice(0,16) + ' UTC';
+
+    renderSummary(summary);
+    renderSignalList(signals);
+    renderChart(klines, signals);
+
+    // 預設選取最新訊號
+    if (signals.length) selectSignal(signals[signals.length - 1].id);
+
+  } catch (err) {
+    document.getElementById('loading').innerHTML =
+      `<div style="text-align:center;color:#f85149">
+        <div style="font-size:24px">⚠️</div>
+        <p style="margin-top:8px">無法連線到 API Server</p>
+        <p style="color:#8b949e;font-size:12px;margin-top:4px">請先執行：<code style="background:#30363d;padding:2px 6px;border-radius:3px">node src/scripts/dashboardServer.js</code></p>
+      </div>`;
+    return;
+  }
+
+  document.getElementById('loading').style.display = 'none';
+}
+
+init();
+</script>
+</body>
+</html>
