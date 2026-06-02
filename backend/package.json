@@ -4,7 +4,11 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "fetch": "node src/scripts/fetchBTC.js",
+    "verify": "node src/scripts/runVerification.js",
+    "dashboard": "node src/scripts/dashboardServer.js",
+    "cron": "node src/scripts/cronJob.js",
+    "test:signals": "node src/scripts/testSignals.js"
   },
   "keywords": [],
   "author": "",
