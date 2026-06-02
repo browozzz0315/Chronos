@@ -10,6 +10,7 @@
 const fs   = require("fs");
 const path = require("path");
 const { generateSignals } = require("../services/signalService");
+const { dataFilename, legacyDataFilename, normalizeSymbol } = require("../utils/symbols");
 
 function loadLocalData(filename) {
   const filePath = path.join(__dirname, "../../../data", filename);
@@ -17,6 +18,17 @@ function loadLocalData(filename) {
     throw new Error(`找不到檔案: ${filePath}\n請先執行 fetchBTC.js 產生資料`);
   }
   return JSON.parse(fs.readFileSync(filePath, "utf-8"));
+}
+
+function loadSymbolData(symbol, suffix) {
+  const filename = dataFilename(symbol, suffix);
+  const filePath = path.join(__dirname, "../../../data", filename);
+
+  if (fs.existsSync(filePath)) {
+    return loadLocalData(filename);
+  }
+
+  return loadLocalData(legacyDataFilename(symbol, suffix));
 }
 
 function formatTime(ms) {
@@ -70,10 +82,10 @@ function testDataIntegrity(klines) {
 // ─────────────────────────────────────────────
 // 測試 2：訊號產生結果
 // ─────────────────────────────────────────────
-function testSignalGeneration(klines) {
+function testSignalGeneration(klines, symbol) {
   printDivider("TEST 2: 訊號產生結果");
 
-  const signals = generateSignals(klines);
+  const signals = generateSignals(klines, { symbol });
 
   // 統計
   const byStrategy = {};
@@ -167,7 +179,8 @@ async function main() {
   console.log("╚══════════════════════════════════════════════╝");
 
   try {
-    const klines = loadLocalData("btc_1h.json");
+    const symbol = normalizeSymbol(process.env.CHRONOS_SYMBOL || process.argv[2] || "BTCUSDT");
+    const klines = loadSymbolData(symbol, "1h");
 
     const dataOk = testDataIntegrity(klines);
     if (!dataOk) {
@@ -175,7 +188,7 @@ async function main() {
       process.exit(1);
     }
 
-    const signals = testSignalGeneration(klines);
+    const signals = testSignalGeneration(klines, symbol);
     testStrategyLogic();
 
     printDivider("結論");

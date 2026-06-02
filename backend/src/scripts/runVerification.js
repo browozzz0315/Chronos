@@ -3,6 +3,7 @@ const path = require("path");
 const { generateSignals } = require("../services/signalService");
 const { verifyAll, summarize } = require("../services/verifyService");
 const { saveJson } = require("../utils/saveJson");
+const { dataFilename, legacyDataFilename, normalizeSymbol } = require("../utils/symbols");
 
 function loadData(filename) {
   const filePath = path.join(__dirname, "../../../data", filename);
@@ -10,6 +11,18 @@ function loadData(filename) {
     throw new Error(`Missing data file: ${filePath}`);
   }
   return JSON.parse(fs.readFileSync(filePath, "utf-8"));
+}
+
+function loadSymbolData(symbol, suffix) {
+  const filename = dataFilename(symbol, suffix);
+  const legacyFilename = legacyDataFilename(symbol, suffix);
+  const filePath = path.join(__dirname, "../../../data", filename);
+
+  if (fs.existsSync(filePath)) {
+    return loadData(filename);
+  }
+
+  return loadData(legacyFilename);
 }
 
 function formatTime(ms) {
@@ -24,11 +37,13 @@ function printDivider(title = "") {
 async function main() {
   console.log("Chronos verification run");
 
-  const klines = loadData("btc_1h.json");
-  const signals = generateSignals(klines);
+  const symbol = normalizeSymbol(process.env.CHRONOS_SYMBOL || process.argv[2] || "BTCUSDT");
+  const klines = loadSymbolData(symbol, "1h");
+  const signals = generateSignals(klines, { symbol });
   const verified = verifyAll(signals, klines, 24);
   const summary = summarize(verified);
 
+  console.log(`Symbol: ${symbol}`);
   console.log(`Loaded ${klines.length} candles`);
   console.log(`Range: ${formatTime(klines[0].openTime)} -> ${formatTime(klines[klines.length - 1].openTime)}`);
   console.log(`Signals: ${signals.length}`);
@@ -55,8 +70,8 @@ async function main() {
     }
   }
 
-  await saveJson("btc_1h_verified.json", verified);
-  console.log("Saved data/btc_1h_verified.json");
+  await saveJson(dataFilename(symbol, "1h_verified"), verified);
+  console.log(`Saved data/${dataFilename(symbol, "1h_verified")}`);
 }
 
 main().catch((err) => {

@@ -2,8 +2,9 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const { summarize } = require("../services/verifyService");
+const { DEFAULT_SYMBOLS, dataFilename, legacyDataFilename, normalizeSymbol } = require("../utils/symbols");
 
-const PORT = 3001;
+const PORT = Number(process.env.PORT || 3001);
 const DATA_DIR = path.join(__dirname, "../../../data");
 const PUBLIC_DIR = path.join(__dirname, "../../public");
 
@@ -15,22 +16,31 @@ function readJson(filename) {
   return JSON.parse(fs.readFileSync(filePath, "utf-8"));
 }
 
+function readSymbolJson(symbol, suffix) {
+  return readJson(dataFilename(symbol, suffix)) || readJson(legacyDataFilename(symbol, suffix));
+}
+
 function sendJson(res, statusCode, data) {
   res.writeHead(statusCode, { "Content-Type": "application/json" });
   res.end(JSON.stringify(data));
 }
 
 const routes = {
-  "/api/signals": () => readJson("btc_1h_verified.json"),
-  "/api/klines": () => {
-    const klines = readJson("btc_1h.json");
+  "/api/symbols": () => DEFAULT_SYMBOLS.map((symbol) => ({
+    symbol,
+    hasKlines: Boolean(readSymbolJson(symbol, "1h")),
+    hasVerified: Boolean(readSymbolJson(symbol, "1h_verified")),
+  })),
+  "/api/signals": ({ symbol }) => readSymbolJson(symbol, "1h_verified"),
+  "/api/klines": ({ symbol }) => {
+    const klines = readSymbolJson(symbol, "1h");
     if (!klines) {
       return null;
     }
     return klines.filter((k) => k.indicators?.ema200 !== null);
   },
-  "/api/summary": () => {
-    const verified = readJson("btc_1h_verified.json");
+  "/api/summary": ({ symbol }) => {
+    const verified = readSymbolJson(symbol, "1h_verified");
     return verified ? summarize(verified) : null;
   },
 };
@@ -45,12 +55,15 @@ const mimeTypes = {
 const server = http.createServer((req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
 
-  const url = req.url.split("?")[0];
+  const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
+  const url = parsedUrl.pathname;
+  const symbol = normalizeSymbol(parsedUrl.searchParams.get("symbol") || "BTCUSDT");
+
   if (routes[url]) {
-    const data = routes[url]();
+    const data = routes[url]({ symbol });
     if (!data) {
       sendJson(res, 404, {
-        error: "Required data file is missing. Run fetchBTC.js and runVerification.js first.",
+        error: `Required data file is missing for ${symbol}. Run fetchBTC.js and runVerification.js first.`,
       });
       return;
     }

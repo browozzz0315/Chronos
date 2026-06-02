@@ -142,6 +142,8 @@
 
 <script>
 const API = 'http://localhost:3001';
+const SUPPORTED_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'DOGEUSDT'];
+let currentSymbol = new URLSearchParams(location.search).get('symbol') || 'BTCUSDT';
 let priceChart = null;
 let allSignals = [];
 let allKlines  = [];
@@ -151,6 +153,36 @@ async function fetchJson(url) {
   const r = await fetch(url);
   if (!r.ok) throw new Error(await r.text());
   return r.json();
+}
+
+function apiUrl(path) {
+  return `${API}${path}?symbol=${encodeURIComponent(currentSymbol)}`;
+}
+
+function updateHeaderSymbol() {
+  const meta = document.querySelector('header .meta');
+  if (meta) meta.innerHTML = meta.innerHTML.replace(/^[A-Z]+USDT/, currentSymbol);
+}
+
+function initSymbolSelect() {
+  if (document.getElementById('symbolSelect')) return;
+
+  const select = document.createElement('select');
+  select.id = 'symbolSelect';
+  select.setAttribute('aria-label', '交易對');
+  select.style.cssText = 'background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px;margin-left:12px;';
+  select.innerHTML = SUPPORTED_SYMBOLS
+    .map(symbol => `<option value="${symbol}" ${symbol === currentSymbol ? 'selected' : ''}>${symbol}</option>`)
+    .join('');
+  select.onchange = () => {
+    currentSymbol = select.value;
+    updateHeaderSymbol();
+    history.replaceState(null, '', `?symbol=${encodeURIComponent(currentSymbol)}`);
+    init(false);
+  };
+
+  document.querySelector('header')?.appendChild(select);
+  updateHeaderSymbol();
 }
 
 // ── 格式化 ──
@@ -333,12 +365,14 @@ function highlightSignalOnChart(sig) {
 }
 
 // ── 主初始化 ──
-async function init() {
+async function init(shouldInitSymbols = true) {
   try {
+    if (shouldInitSymbols) initSymbolSelect();
+
     const [signals, klines, summary] = await Promise.all([
-      fetchJson(`${API}/api/signals`),
-      fetchJson(`${API}/api/klines`),
-      fetchJson(`${API}/api/summary`),
+      fetchJson(apiUrl('/api/signals')),
+      fetchJson(apiUrl('/api/klines')),
+      fetchJson(apiUrl('/api/summary')),
     ]);
 
     allSignals = signals;

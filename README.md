@@ -146,7 +146,7 @@ RSI < 30 + 成交量放大 + 大趨勢偏多（收盤在 EMA200 上方）
 ## 注意事項
 
 - 樣本數 < 50 筆時，勝率統計不具參考意義
-- 目前僅支援 BTCUSDT，多幣種支援在 Step 12 加入
+- 目前支援 BTCUSDT、ETHUSDT、DOGEUSDT；多幣種策略參數尚未個別最佳化
 - 資料來源為 Binance 公開 API（與 BingX 有微小價差）
 - 本工具僅供研究用途，不構成投資建議
 
@@ -159,8 +159,9 @@ RSI < 30 + 成交量放大 + 大趨勢偏多（收盤在 EMA200 上方）
 - [x] Step 8：規則型訊號產生
 - [x] Step 9：延遲驗證系統
 - [x] Step 10：Dashboard
-- [ ] Step 11：Cron Job 自動定時執行
-- [ ] Step 12：多幣種擴展（ETH、DOGE）
+- [x] Step 11：Cron Job 自動定時執行
+- [x] Step 11.5：訊號品質控管（transition filter + cooldown）
+- [x] Step 12：多幣種擴展（ETH、DOGE）
 - [ ] Step 13：LLM 整合（訊號解釋 / 每日報告）
 - [ ] Step 14：PostgreSQL 資料庫遷移
 

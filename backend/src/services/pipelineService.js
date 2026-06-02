@@ -3,26 +3,28 @@ const { calcAllIndicators } = require("./indicatorService");
 const { generateSignals } = require("./signalService");
 const { verifyAll, summarize } = require("./verifyService");
 const { saveJson } = require("../utils/saveJson");
+const { dataFilename, normalizeSymbol } = require("../utils/symbols");
 
 async function runPipeline(symbol = "BTCUSDT", options = {}) {
+  const normalizedSymbol = normalizeSymbol(symbol);
   const verifyBars = options.verifyBars ?? 24;
-  const multiTF = await fetchMultiTimeframe(symbol);
+  const multiTF = await fetchMultiTimeframe(normalizedSymbol);
   const result = {};
 
   for (const [tf, klines] of Object.entries(multiTF)) {
     result[tf] = calcAllIndicators(klines);
-    await saveJson(`btc_${tf}.json`, result[tf]);
+    await saveJson(dataFilename(normalizedSymbol, tf), result[tf]);
   }
 
   const baseKlines = result["1h"] || [];
-  const signals = generateSignals(baseKlines);
+  const signals = generateSignals(baseKlines, { symbol: normalizedSymbol });
   const verified = verifyAll(signals, baseKlines, verifyBars);
   const summary = summarize(verified);
 
-  await saveJson("btc_1h_verified.json", verified);
+  await saveJson(dataFilename(normalizedSymbol, "1h_verified"), verified);
 
   return {
-    symbol,
+    symbol: normalizedSymbol,
     signals,
     verified,
     summary,
@@ -30,4 +32,14 @@ async function runPipeline(symbol = "BTCUSDT", options = {}) {
   };
 }
 
-module.exports = { runPipeline };
+async function runPipelines(symbols, options = {}) {
+  const results = [];
+
+  for (const symbol of symbols) {
+    results.push(await runPipeline(symbol, options));
+  }
+
+  return results;
+}
+
+module.exports = { runPipeline, runPipelines };

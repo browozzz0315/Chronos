@@ -20,7 +20,7 @@
 
 ---
 
-## 二、目前開發進度（截至 2026-05-31）
+## 二、目前開發進度（截至 2026-06-03）
 
 ### ✅ 已完成
 
@@ -31,13 +31,14 @@
 | 8 | `signalService.js` | 三個規則型策略：TREND_LONG / TREND_SHORT / OVERSOLD_BOUNCE |
 | 9 | `verifyService.js` | 延遲驗證：SL=1.5ATR、TP1/2/3=1.5/3/4.5ATR，計算 R 倍數、MFE、MAE |
 | 10 | `dashboardServer.js` + `index.html` | 純 Node http 伺服器，提供 API；HTML Dashboard 顯示圖表與訊號績效 |
+| 11 | `cronJob.js` + `pipelineService.js` | 每小時自動執行抓資料、計算指標、產生訊號、延遲驗證與存檔 |
+| 11.5 | `signalService.js` | 訊號品質控管：trend transition filter + cooldown，避免同一段趨勢重複出訊號 |
+| 12 | `symbols.js` + pipeline/API | 多幣種支援 BTCUSDT / ETHUSDT / DOGEUSDT，資料檔採 `{symbol.toLowerCase()}_{tf}.json` |
 
 ### ⏳ 尚未完成
 
 | Step | 內容 | 優先順序 |
 |---|---|---|
-| 11 | Cron Job — 每小時自動抓資料 + 驗證 | 🔴 最高 |
-| 12 | 多幣種擴展（ETH、DOGE 等） | 🟡 中 |
 | 13 | LLM 整合 — 訊號解釋 / 每日報告 | 🟡 中 |
 | 14 | PostgreSQL 取代 JSON | 🟢 低（MVP 後期） |
 
@@ -54,20 +55,26 @@ chronos/
 │       ├── scripts/
 │       │   ├── fetchBTC.js         # 抓資料 + 計算指標 + 存檔
 │       │   ├── testSignals.js      # 驗證訊號邏輯（本地，不需網路）
-│       │   ├── runVerification.js  # 執行延遲驗證，存 btc_1h_verified.json
-│       │   └── dashboardServer.js  # HTTP API Server（port 3001）
+│       │   ├── runVerification.js  # 執行延遲驗證，存 {symbol}_1h_verified.json
+│       │   ├── dashboardServer.js  # HTTP API Server（port 3001）
+│       │   └── cronJob.js          # 定時執行多幣種 pipeline
 │       ├── services/
 │       │   ├── binanceService.js   # Binance API 封裝（fetchKlines, fetchMultiTimeframe）
 │       │   ├── indicatorService.js # 技術指標計算（純手寫，無外部依賴）
 │       │   ├── signalService.js    # 規則型訊號產生器
-│       │   └── verifyService.js    # 延遲驗證邏輯（calcLevels, verifySignal, summarize）
+│       │   ├── verifyService.js    # 延遲驗證邏輯（calcLevels, verifySignal, summarize）
+│       │   └── pipelineService.js  # fetch → indicators → signals → verify → saveJson
 │       └── utils/
-│           └── saveJson.js         # JSON 存檔工具（路徑：../../../data）
+│           ├── saveJson.js         # JSON 存檔工具（路徑：../../../data）
+│           └── symbols.js          # 多幣種清單、symbol 正規化、資料檔命名工具
 ├── data/
-│   ├── btc_1h.json                 # 300 根 1h K 線 + 指標
-│   ├── btc_4h.json                 # 200 根 4h K 線 + 指標
-│   ├── btc_1d.json                 # 200 根 1d K 線 + 指標
-│   └── btc_1h_verified.json        # 驗證結果（含 R 倍數、MFE、MAE）
+│   ├── btcusdt_1h.json             # BTCUSDT 300 根 1h K 線 + 指標
+│   ├── btcusdt_4h.json             # BTCUSDT 200 根 4h K 線 + 指標
+│   ├── btcusdt_1d.json             # BTCUSDT 200 根 1d K 線 + 指標
+│   ├── btcusdt_1h_verified.json    # BTCUSDT 驗證結果（含 R 倍數、MFE、MAE）
+│   ├── ethusdt_*.json              # ETHUSDT 多時間框架與驗證結果
+│   ├── dogeusdt_*.json             # DOGEUSDT 多時間框架與驗證結果
+│   └── btc_*.json                  # 舊 BTC 檔名 fallback，保留過渡用
 ├── docs/
 ├── llm.md                          # 本文件
 └── README.md                       # 使用者說明
@@ -103,6 +110,12 @@ chronos/
 - 引用 services：`require("../services/serviceName")`
 - 引用 utils：`require("../utils/utilName")`
 
+### 6. 為什麼加入訊號品質控管？
+原本趨勢條件連續成立時，每根 K 都會產生同方向訊號，導致樣本高度重複、績效統計失真。
+目前 `generateSignals()` 加入兩層控管：
+- `cooldownBars = 6`：同策略同方向至少間隔 6 根 K 才能再次出訊號
+- `requireTrendTransition = true`：TREND_LONG / TREND_SHORT 只在條件剛從不成立變成立時進場
+
 ---
 
 ## 五、訊號策略說明
@@ -136,6 +149,18 @@ chronos/
   前一根為陰線（在跌勢中超賣）
 ```
 
+### 訊號品質控管
+```
+預設：
+  cooldownBars = 6
+  requireTrendTransition = true
+
+行為：
+  同策略同方向訊號至少間隔 6 根 K
+  TREND_LONG / TREND_SHORT 只在條件剛成立時觸發
+  signal.quality 會記錄 cooldownBars、barsSinceLastSignal、transitionEntry
+```
+
 ---
 
 ## 六、驗證系統輸出格式
@@ -151,6 +176,11 @@ chronos/
   "direction": "SHORT",
   "conditions": { "ema_alignment": true, ... },
   "snapshot": { "close": 75274.58, "rsi14": 42.1, ... },
+  "quality": {
+    "cooldownBars": 6,
+    "barsSinceLastSignal": 9,
+    "transitionEntry": true
+  },
   "verification": {
     "outcome": "WIN_TP3",
     "exitPrice": 73514.8,
@@ -183,16 +213,16 @@ chronos/
 
 ---
 
-## 八、目前樣本統計（2026-05-31）
+## 八、目前樣本統計（2026-06-03）
 
-| 策略 | 樣本數 | 勝率 | 平均 R |
-|---|---|---|---|
-| TREND_SHORT | 3 | 66.7% | +1.667 |
-| TREND_LONG | 0 | — | — |
-| OVERSOLD_BOUNCE | 0 | — | — |
+| 幣種 | 策略 | 樣本數 | 勝率 | 平均 R |
+|---|---|---|---|---|
+| BTCUSDT | TREND_SHORT | 4 | 25% | 0 |
+| ETHUSDT | TREND_SHORT | 6 | 66.7% | +0.519 |
+| DOGEUSDT | — | 0 | — | — |
 
-⚠️ 樣本 < 5 筆，統計無意義。需累積 50+ 筆才可參考。
-根本原因：2026-05-18～05-31 BTC 整體空頭結構，多頭策略條件不成立。
+⚠️ 樣本仍然過少，統計只能用來檢查流程是否正常，不能視為策略穩定結論。需累積 50+ 筆以上才比較有參考價值。
+目前 BTC / ETH 主要觸發 TREND_SHORT，DOGEUSDT 資料完整但尚未觸發訊號。
 
 ---
 
@@ -202,27 +232,37 @@ chronos/
 2. **指標 null 處理**：用 `== null`（同時涵蓋 undefined），不要用 `=== null`
 3. **資料型別**：Binance API 回傳 OHLCV 是 String，存檔前必須 `parseFloat()`
 4. **EMA200 需要 200 根暖機**：抓資料時 limit 設 300（1h）才有足夠的有效根數
-5. **新增幣種**：`signalService.js` 的 `"BTCUSDT"` 目前是硬寫，多幣種時需改成參數傳入
+5. **新增幣種**：已支援 `BTCUSDT`、`ETHUSDT`、`DOGEUSDT`；新增幣種時請透過 `symbols.js` / `CHRONOS_SYMBOLS` 管理，避免重新硬寫
 6. **不要修改 data/ 下的 JSON**：這些是系統運行產出，應由腳本管理，不手動編輯
 
 ---
 
 ## 十、下一步待辦（LLM 協作用）
 
-### Step 11（下一個要做的）
+### Step 11（已完成）
 **自動定時抓資料（Cron Job）**
 - 套件：`node-cron`
 - 頻率：每小時一次（`0 * * * *`）
-- 動作：fetchBTC → calcIndicators → generateSignals → verifyAll → saveJson
-- 入口：新建 `src/scripts/cronJob.js`
+- 動作：fetchMultiTimeframe → calcAllIndicators → generateSignals → verifyAll → saveJson
+- 入口：`src/scripts/cronJob.js`
+- Pipeline：`src/services/pipelineService.js`
 
-### Step 12
+### Step 11.5（已完成）
+**訊號品質控管**
+- 趨勢策略只在條件剛成立時觸發
+- 同策略同方向預設 `cooldownBars = 6`
+- signal 新增 `quality` 欄位，記錄 cooldown 與 barsSinceLastSignal
+
+### Step 12（已完成）
 **多幣種擴展**
 - 將 symbol 從硬寫改為參數
 - 支援：BTCUSDT、ETHUSDT、DOGEUSDT
 - 資料檔命名規則：`{symbol.toLowerCase()}_{tf}.json`
+- 新增：`src/utils/symbols.js`
+- Dashboard API 支援 `?symbol=BTCUSDT`
+- BTC 舊檔 `btc_*.json` 保留 fallback，方便過渡
 
-### Step 13
+### Step 13（下一個要做的）
 **LLM 整合**
 - 每個訊號觸發時呼叫 Claude API 生成自然語言解釋
 - 每日生成策略績效報告
