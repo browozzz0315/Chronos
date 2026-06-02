@@ -1,0 +1,50 @@
+name: Chronos Hourly Pipeline
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-market-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Run single pipeline
+        working-directory: backend
+        env:
+          CHRONOS_SYMBOLS: BTCUSDT,ETHUSDT,DOGEUSDT
+        run: npm run pipeline
+
+      - name: Commit updated data
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f data/*.json
+          if git diff --cached --quiet; then
+            echo "No data changes to commit"
+            exit 0
+          fi
+          git commit -m "Update hourly market data"
+          git push

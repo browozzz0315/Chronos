@@ -8,6 +8,7 @@
     "verify": "node src/scripts/runVerification.js",
     "dashboard": "node src/scripts/dashboardServer.js",
     "cron": "node src/scripts/cronJob.js",
+    "pipeline": "node src/scripts/runPipelineOnce.js",
     "test:signals": "node src/scripts/testSignals.js"
   },
   "keywords": [],
