@@ -1,5 +1,5 @@
 const { fetchMultiTimeframe } = require("../services/binanceService");
-const { calcAllIndicators } = require("../services/indicatorService");
+const { calcAllIndicators } = require("../services/Indicatorservice");
 const { saveJson } = require("../utils/saveJson");
 const { dataFilename, parseSymbols } = require("../utils/symbols");
 
