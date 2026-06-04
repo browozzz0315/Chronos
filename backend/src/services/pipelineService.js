@@ -19,6 +19,7 @@ async function runPipeline(symbol = "BTCUSDT", options = {}) {
   }
 
   const baseKlines = result["1h"] || [];
+  const latestBaseKline = baseKlines[baseKlines.length - 1] || null;
   const signals = generateSignals(baseKlines, { symbol: normalizedSymbol });
   const verifiedFilename = dataFilename(normalizedSymbol, "1h_verified");
   const historyFilename = dataFilename(normalizedSymbol, "1h_history");
@@ -48,6 +49,12 @@ async function runPipeline(symbol = "BTCUSDT", options = {}) {
       selected: llmResult.selected || 0,
       rateLimited: Boolean(llmResult.rateLimited),
     },
+    dataWindow: latestBaseKline
+      ? {
+        latestOpenTime: latestBaseKline.openTime,
+        latestCloseTime: latestBaseKline.closeTime,
+      }
+      : null,
     klinesByTimeframe: result,
   };
 }

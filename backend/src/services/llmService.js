@@ -76,12 +76,13 @@ function envFlag(name, fallback = false) {
 function resolveExplainOptions(options = {}) {
   return {
     provider: options.provider,
+    batch: options.batch ?? envFlag("CHRONOS_LLM_BATCH_EXPLANATIONS", true),
     mode: String(
       options.explainMode ||
       process.env.CHRONOS_LLM_EXPLAIN_SIGNALS ||
       "trade"
     ).toLowerCase(),
-    maxPerRun: options.maxPerRun ?? envNumber("CHRONOS_LLM_MAX_EXPLANATIONS_PER_RUN", 3),
+    maxPerRun: options.maxPerRun ?? envNumber("CHRONOS_LLM_MAX_EXPLANATIONS_PER_RUN", 5),
     skipPending: options.skipPending ?? envFlag("CHRONOS_LLM_SKIP_PENDING", true),
     delayMs: options.delayMs ?? envNumber("CHRONOS_LLM_DELAY_MS", 1200),
     retry429DelayMs: options.retry429DelayMs ?? envNumber("CHRONOS_LLM_RETRY_429_DELAY_MS", 5000),
@@ -295,6 +296,63 @@ function createSignalExplanationMessagesSafe(signal) {
   ];
 }
 
+function compactSignalForBatch(signal) {
+  const verification = signal.verification || {};
+  const snapshot = signal.snapshot || {};
+
+  return {
+    id: signal.id,
+    symbol: signal.symbol,
+    signalType: signal.signalType,
+    strategy: signal.strategy,
+    direction: signal.direction,
+    openTime: new Date(signal.openTime).toISOString(),
+    entryPrice: signal.entryPrice,
+    conditions: signal.conditions,
+    snapshot: {
+      close: snapshot.close,
+      rsi14: snapshot.rsi14,
+      macdHist: snapshot.macdHist,
+      adx: snapshot.adx,
+      atr14: snapshot.atr14,
+      ema20: snapshot.ema20,
+      ema50: snapshot.ema50,
+      ema200: snapshot.ema200,
+      marketState: snapshot.marketState,
+      observationScore: snapshot.observationScore,
+    },
+    verification: {
+      outcome: verification.outcome,
+      exitReason: verification.exitReason,
+      checkedBars: verification.checkedBars,
+      isComplete: verification.isComplete,
+      rMultiple: verification.rMultiple,
+      pnlPct: verification.pnlPct,
+      mfe: verification.mfe,
+      mae: verification.mae,
+    },
+  };
+}
+
+function createBatchSignalExplanationMessages(signals) {
+  return [
+    {
+      role: "system",
+      content:
+        "你是 Chronos 的交易訊號分析助手。請使用繁體中文，根據提供的多筆規則型訊號資料，" +
+        "為每一筆訊號輸出精簡、可讀、保守的解釋。不要保證未來結果，不要捏造資料，不要提供投資建議。",
+    },
+    {
+      role: "user",
+      content:
+        "請為 signals 中每一筆資料產生 2 到 4 句繁體中文解釋，說明訊號為什麼被觸發，以及驗證結果代表什麼。\n" +
+        "請只回傳 JSON array，不要 markdown，不要 code fence，不要額外文字。\n" +
+        "每個 array item 格式必須是：{\"id\":\"原始 id\",\"explanation\":\"解釋文字\"}\n\n" +
+        `signals: ${toCompactJson(signals.map(compactSignalForBatch))}`,
+    },
+  ];
+}
+
 function createDailyReportMessagesSafe({
   symbol,
   asOf,
@@ -324,6 +382,25 @@ function createDailyReportMessagesSafe({
         `representativeSignals: ${toCompactJson(representativeSignals || [])}`,
     },
   ];
+}
+
+function parseJsonResponse(text) {
+  const cleaned = String(text || "")
+    .trim()
+    .replace(/^```(?:json)?/i, "")
+    .replace(/```$/i, "")
+    .trim();
+
+  try {
+    return JSON.parse(cleaned);
+  } catch (err) {
+    const start = cleaned.indexOf("[");
+    const end = cleaned.lastIndexOf("]");
+    if (start !== -1 && end !== -1 && end > start) {
+      return JSON.parse(cleaned.slice(start, end + 1));
+    }
+    throw err;
+  }
 }
 
 async function createChatCompletion(messages, options = {}) {
@@ -408,6 +485,50 @@ async function generateSignalExplanation(signal, options = {}) {
   };
 }
 
+async function generateBatchSignalExplanations(signals, options = {}) {
+  if (!Array.isArray(signals) || !signals.length) {
+    return null;
+  }
+
+  const result = await createChatCompletion(
+    createBatchSignalExplanationMessages(signals),
+    {
+      provider: options.provider,
+      maxTokens: options.maxTokens ?? envNumber(
+        "CHRONOS_LLM_BATCH_MAX_TOKENS",
+        Math.max(800, signals.length * 240)
+      ),
+      temperature: 0.2,
+      timeoutMs: options.timeoutMs,
+      retry429DelayMs: options.retry429DelayMs,
+    }
+  );
+
+  if (!result) {
+    return null;
+  }
+
+  const parsed = parseJsonResponse(result.text);
+  if (!Array.isArray(parsed)) {
+    throw new Error("LLM batch response must be a JSON array");
+  }
+
+  const generatedAt = new Date().toISOString();
+  const byId = new Map();
+  for (const item of parsed) {
+    if (!item?.id || !item?.explanation) continue;
+    byId.set(String(item.id), {
+      provider: result.provider,
+      model: result.model,
+      generatedAt,
+      explanation: String(item.explanation).trim(),
+      batch: true,
+    });
+  }
+
+  return byId;
+}
+
 async function enrichSignalsWithExplanations(signals, options = {}) {
   if (!isLlmEnabled(options.provider) || !Array.isArray(signals) || !signals.length) {
     return {
@@ -424,6 +545,66 @@ async function enrichSignalsWithExplanations(signals, options = {}) {
   let generated = 0;
   let skipped = 0;
   let rateLimited = false;
+
+  if (explainOptions.batch) {
+    let batchById = new Map();
+    let batchError = null;
+
+    if (selected.length) {
+      try {
+        batchById = await generateBatchSignalExplanations(selected, explainOptions) || new Map();
+      } catch (err) {
+        batchError = err;
+        if (isRateLimitError(err)) {
+          rateLimited = true;
+        }
+      }
+    }
+
+    const enriched = signals.map((signal) => {
+      if (signal.llm?.explanation) {
+        skipped += 1;
+        return signal;
+      }
+
+      if (!selectedIds.has(signal.id)) {
+        skipped += 1;
+        return signal;
+      }
+
+      const llm = batchById.get(signal.id);
+      if (llm) {
+        generated += 1;
+        return { ...signal, llm };
+      }
+
+      if (batchError) {
+        return {
+          ...signal,
+          llm: {
+            provider: resolveProviderName(options.provider),
+            generatedAt: new Date().toISOString(),
+            error: batchError.message,
+            batch: true,
+          },
+        };
+      }
+
+      skipped += 1;
+      return signal;
+    });
+
+    return {
+      signals: enriched,
+      generated,
+      skipped,
+      rateLimited,
+      selected: selected.length,
+      provider: getProviderConfig(options.provider)?.provider || null,
+      batch: true,
+    };
+  }
+
   const enriched = [];
 
   for (const signal of signals) {

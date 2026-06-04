@@ -68,10 +68,19 @@ npm run report:daily
 
 LLM 用量控制：
 - Groq 預設模型為 `llama-3.3-70b-versatile`；若你曾設定 `GROQ_MODEL=openai/gpt-oss-20b`，建議先移除或改回 Llama 3.3
-- 預設只對 `signalType=TRADE` 的正式策略訊號產生少量逐筆解釋，避免 OBS 訊號大量觸發 429
-- 預設每次 pipeline 最多產生 3 筆訊號解釋：`CHRONOS_LLM_MAX_EXPLANATIONS_PER_RUN=3`
+- 預設只對 `signalType=TRADE` 的正式策略訊號產生少量解釋，避免 OBS 訊號大量觸發 429
+- 預設採用 batch 模式，一次把選出的訊號打包送給 LLM，再依 signal id 寫回 JSON：`CHRONOS_LLM_BATCH_EXPLANATIONS=true`
+- 預設每次每個幣種最多產生 5 筆訊號解釋：`CHRONOS_LLM_MAX_EXPLANATIONS_PER_RUN=5`
 - OBS 訊號會以批次統計、近期樣本、代表性樣本納入每日報告分析，不會每筆各打一個 API call
 - 可用 `CHRONOS_LLM_EXPLAIN_SIGNALS=all` 改成全部訊號，但不建議在 OBS 樣本很多時使用
+- 只更新單一幣種可用：`npm run pipeline -- BTCUSDT`；更新預設三幣種可直接用：`npm run pipeline`
+
+Cron / 時間顯示：
+- 預設排程為 `2 * * * *`，也就是每小時第 2 分鐘執行
+- 預設時區為 `Asia/Taipei`，可用 `CHRONOS_CRON_TIMEZONE` 覆蓋
+- `npm run cron` 啟動後預設會先跑一次，再等待下一個排程；若只想等待排程可設 `CHRONOS_RUN_ON_STARTUP=false`
+- Binance API 會回傳正在形成中的最新 K 線，系統會自動排除尚未收盤的 K，只用已收盤資料產生訊號
+- Dashboard 時間以 `Asia/Taipei` 顯示；JSON 內 timestamp 仍是毫秒時間戳，可跨時區穩定驗證
 
 ---
 

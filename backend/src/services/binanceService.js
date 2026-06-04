@@ -10,22 +10,27 @@ const BASE_URL = "https://api.binance.com";
  */
 async function fetchKlines({ symbol = "BTCUSDT", interval = "1h", limit = 300 }) {
   try {
+    const requestLimit = Math.min(limit + 1, 1000);
+    const now = Date.now();
     const response = await axios.get(`${BASE_URL}/api/v3/klines`, {
-      params: { symbol, interval, limit },
+      params: { symbol, interval, limit: requestLimit },
       timeout: 10000,
     });
 
-    return response.data.map((k) => ({
-      openTime:     k[0],                    // ms timestamp
-      open:         parseFloat(k[1]),         // Binance returns strings; store numeric OHLCV.
-      high:         parseFloat(k[2]),
-      low:          parseFloat(k[3]),
-      close:        parseFloat(k[4]),
-      volume:       parseFloat(k[5]),
-      closeTime:    k[6],
-      quoteVolume:  parseFloat(k[7]),         // Quote volume is more intuitive for USDT pairs.
-      trades:       k[8],                     // Trade count can help future volume confirmation.
-    }));
+    return response.data
+      .filter((k) => k[6] < now)
+      .slice(-limit)
+      .map((k) => ({
+        openTime:     k[0],                    // ms timestamp
+        open:         parseFloat(k[1]),         // Binance returns strings; store numeric OHLCV.
+        high:         parseFloat(k[2]),
+        low:          parseFloat(k[3]),
+        close:        parseFloat(k[4]),
+        volume:       parseFloat(k[5]),
+        closeTime:    k[6],
+        quoteVolume:  parseFloat(k[7]),         // Quote volume is more intuitive for USDT pairs.
+        trades:       k[8],                     // Trade count can help future volume confirmation.
+      }));
   } catch (error) {
     console.error(`[binanceService] fetchKlines failed (${symbol} ${interval}):`, error.message);
     throw error;

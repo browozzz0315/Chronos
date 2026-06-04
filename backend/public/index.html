@@ -232,6 +232,7 @@ const API = 'http://localhost:3001';
 const SUPPORTED_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'];
 const SIGNAL_LIST_LIMIT = 10;
 const THEME_KEY = 'chronos-theme';
+const DISPLAY_TIMEZONE = 'Asia/Taipei';
 const STRATEGY_LABELS = {
   TREND_LONG: '順勢多',
   TREND_SHORT: '順勢空',
@@ -362,7 +363,25 @@ function strategyLabel(strategy) {
 
 // Formatting
 function fmtTime(ms) {
-  return new Date(ms).toISOString().replace('T',' ').slice(0,16) + ' UTC';
+  return new Date(ms).toLocaleString('zh-TW', {
+    timeZone: DISPLAY_TIMEZONE,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }) + ` ${DISPLAY_TIMEZONE}`;
+}
+
+function fmtChartTime(ms) {
+  return new Date(ms).toLocaleString('zh-TW', {
+    timeZone: DISPLAY_TIMEZONE,
+    hour12: false,
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+  });
 }
 function fmtR(r) {
   if (r == null) return '—';
@@ -578,7 +597,7 @@ function markerColor(marker, colors) {
 // Render price, candlesticks, and indicators.
 function renderChart(klines, signals) {
   const colors = chartColors();
-  const labels   = klines.map(k => new Date(k.openTime).toISOString().slice(5,16).replace('T',' '));
+  const labels   = klines.map(k => fmtChartTime(k.openTime));
   const closes   = klines.map(k => k.close);
   const ema20    = klines.map(k => k.indicators?.ema20  ?? null);
   const ema50    = klines.map(k => k.indicators?.ema50  ?? null);
@@ -670,8 +689,7 @@ async function init(shouldInitSymbols = true) {
     allKlines  = klines;
 
     const latest = klines[klines.length - 1];
-    document.getElementById('lastUpdate').textContent =
-      new Date(latest.openTime).toISOString().replace('T',' ').slice(0,16) + ' UTC';
+    document.getElementById('lastUpdate').textContent = fmtTime(latest.closeTime ?? latest.openTime);
 
     renderSummary(summary);
     renderSignalList(signals);
