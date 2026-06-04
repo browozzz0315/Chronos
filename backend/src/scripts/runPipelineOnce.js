@@ -12,7 +12,8 @@ async function main() {
     const strategyNames = Object.keys(result.summary);
     console.log(
       `[pipeline] ${result.symbol}: signals=${result.signals.length}, ` +
-      `strategies=${strategyNames.length ? strategyNames.join(",") : "none"}`
+      `strategies=${strategyNames.length ? strategyNames.join(",") : "none"}, ` +
+      `history=${result.historyStats.nextCount}`
     );
   }
 

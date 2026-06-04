@@ -2,7 +2,7 @@ name: Chronos Hourly Pipeline
 
 on:
   schedule:
-    - cron: "0 * * * *"
+    - cron: "2 * * * *"
   workflow_dispatch:
 
 permissions:

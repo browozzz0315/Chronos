@@ -3,6 +3,7 @@ const path = require("path");
 const { generateSignals } = require("../services/signalService");
 const { verifyAll, summarize } = require("../services/verifyService");
 const { saveJson } = require("../utils/saveJson");
+const { upsertSignalHistory } = require("../utils/signalHistory");
 const { dataFilename, legacyDataFilename, normalizeSymbol } = require("../utils/symbols");
 
 function loadData(filename) {
@@ -72,6 +73,15 @@ async function main() {
 
   await saveJson(dataFilename(symbol, "1h_verified"), verified);
   console.log(`Saved data/${dataFilename(symbol, "1h_verified")}`);
+
+  const historyStats = await upsertSignalHistory(
+    dataFilename(symbol, "1h_history"),
+    verified
+  );
+  console.log(
+    `Updated data/${dataFilename(symbol, "1h_history")} ` +
+    `(history=${historyStats.nextCount}, new=${historyStats.inserted})`
+  );
 }
 
 main().catch((err) => {

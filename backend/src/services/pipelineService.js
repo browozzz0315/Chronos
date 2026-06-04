@@ -3,6 +3,7 @@ const { calcAllIndicators } = require("./Indicatorservice");
 const { generateSignals } = require("./signalService");
 const { verifyAll, summarize } = require("./verifyService");
 const { saveJson } = require("../utils/saveJson");
+const { upsertSignalHistory } = require("../utils/signalHistory");
 const { dataFilename, normalizeSymbol } = require("../utils/symbols");
 
 async function runPipeline(symbol = "BTCUSDT", options = {}) {
@@ -22,12 +23,17 @@ async function runPipeline(symbol = "BTCUSDT", options = {}) {
   const summary = summarize(verified);
 
   await saveJson(dataFilename(normalizedSymbol, "1h_verified"), verified);
+  const historyStats = await upsertSignalHistory(
+    dataFilename(normalizedSymbol, "1h_history"),
+    verified
+  );
 
   return {
     symbol: normalizedSymbol,
     signals,
     verified,
     summary,
+    historyStats,
     klinesByTimeframe: result,
   };
 }
