@@ -9,6 +9,7 @@
   :root {
     --bg:      #0d1117;
     --surface: #161b22;
+    --surface-2: #0f141b;
     --border:  #30363d;
     --text:    #e6edf3;
     --muted:   #8b949e;
@@ -17,22 +18,84 @@
     --yellow:  #d29922;
     --blue:    #58a6ff;
     --purple:  #bc8cff;
+    --chart-grid: #21262d;
+    --tooltip-bg: #161b22;
+    --shadow: rgba(0, 0, 0, .25);
+  }
+  [data-theme="light"] {
+    --bg:      #f3eee4;
+    --surface: #fffaf0;
+    --surface-2: #efe6d7;
+    --border:  #d8cbb8;
+    --text:    #26302c;
+    --muted:   #6f766e;
+    --green:   #237a47;
+    --red:     #be3e37;
+    --yellow:  #a66a10;
+    --blue:    #2867a8;
+    --purple:  #6f4db7;
+    --chart-grid: #e2d6c4;
+    --tooltip-bg: #fffaf0;
+    --shadow: rgba(83, 61, 31, .12);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; }
+  html, body { width: 100%; height: 100%; overflow: hidden; }
+  body {
+    background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;
+    display: flex; flex-direction: column; transition: background .2s ease, color .2s ease;
+  }
 
   header {
     display: flex; align-items: center; justify-content: space-between;
     padding: 16px 24px; border-bottom: 1px solid var(--border);
-    background: var(--surface);
+    background: var(--surface); box-shadow: 0 8px 30px var(--shadow);
+    flex: 0 0 auto;
   }
+  .brand { display: flex; flex-direction: column; gap: 3px; }
   header h1 { font-size: 18px; font-weight: 700; letter-spacing: 2px; color: var(--blue); }
   header .meta { color: var(--muted); font-size: 12px; }
   #lastUpdate { color: var(--green); }
+  .header-controls { display: flex; align-items: center; gap: 10px; }
+  .symbol-button, .theme-toggle {
+    min-height: 34px; border: 1px solid var(--border); border-radius: 999px;
+    background: linear-gradient(180deg, var(--surface), var(--surface-2));
+    color: var(--text); font-size: 12px; font-weight: 700;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 8px 24px var(--shadow);
+  }
+  .symbol-picker { position: relative; }
+  .symbol-button {
+    min-width: 132px; padding: 0 13px 0 15px; cursor: pointer;
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  }
+  .symbol-button::after {
+    content: ""; width: 7px; height: 7px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted);
+    transform: translateY(-2px) rotate(45deg); transition: transform .18s ease;
+  }
+  .symbol-picker.open .symbol-button { border-color: var(--blue); }
+  .symbol-picker.open .symbol-button::after { transform: translateY(2px) rotate(225deg); }
+  .symbol-menu {
+    display: none; position: absolute; right: 0; top: calc(100% + 8px); z-index: 20;
+    min-width: 150px; padding: 6px; border: 1px solid var(--border); border-radius: 14px;
+    background: var(--surface); box-shadow: 0 18px 50px var(--shadow);
+  }
+  .symbol-picker.open .symbol-menu { display: block; }
+  .symbol-option {
+    width: 100%; border: 0; border-radius: 10px; padding: 9px 11px;
+    background: transparent; color: var(--text); cursor: pointer;
+    text-align: left; font-size: 12px; font-weight: 700;
+  }
+  .symbol-option:hover, .symbol-option[aria-selected="true"] {
+    background: rgba(88,166,255,.13); color: var(--blue);
+  }
+  .theme-toggle { padding: 0 14px; cursor: pointer; }
+  .symbol-button:hover, .theme-toggle:hover { border-color: var(--blue); }
 
-  .layout { display: grid; grid-template-columns: 280px 1fr; gap: 0; height: calc(100vh - 57px); }
+  .layout {
+    display: grid; grid-template-columns: 280px 1fr; gap: 0;
+    flex: 1 1 auto; min-height: 0; overflow: hidden;
+  }
 
-  /* ── 左側面板 ── */
+  /* Sidebar */
   .sidebar {
     border-right: 1px solid var(--border);
     overflow-y: auto; padding: 16px;
@@ -42,18 +105,18 @@
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
   .card-title { font-size: 11px; font-weight: 600; letter-spacing: 1px; color: var(--muted); text-transform: uppercase; margin-bottom: 12px; }
 
-  /* 統計卡 */
+  /* Statistics */
   .stat-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); }
   .stat-row:last-child { border-bottom: none; }
   .stat-label { color: var(--muted); font-size: 12px; }
   .stat-value { font-weight: 600; font-size: 13px; }
   .green { color: var(--green); } .red { color: var(--red); } .yellow { color: var(--yellow); } .blue { color: var(--blue); }
 
-  /* 勝率條 */
+  /* Win-rate bar */
   .winrate-bar { height: 6px; background: var(--border); border-radius: 3px; margin-top: 8px; overflow: hidden; }
   .winrate-fill { height: 100%; background: var(--green); border-radius: 3px; transition: width .5s ease; }
 
-  /* 訊號列表 */
+  /* Signal list */
   .signal-item {
     padding: 10px; border-radius: 6px; border: 1px solid var(--border);
     margin-bottom: 8px; cursor: pointer; transition: border-color .2s;
@@ -69,13 +132,14 @@
   .outcome-TIMEOUT_LOSS                                   { background: rgba(248,81,73,.1); color: var(--red); }
   .signal-meta { font-size: 11px; color: var(--muted); }
   .signal-r { font-size: 13px; font-weight: 700; }
+  .signal-list-note { color: var(--muted); font-size: 11px; line-height: 1.4; margin-bottom: 10px; }
 
-  /* ── 主區域 ── */
+  /* Main content */
   .main { display: flex; flex-direction: column; overflow: hidden; }
-  .chart-area { flex: 1; padding: 16px; min-height: 0; }
+  .chart-area { flex: 1; padding: 16px; min-height: 0; overflow: hidden; }
   canvas { width: 100% !important; }
 
-  /* 詳情面板 */
+  /* Detail panel */
   .detail-panel {
     border-top: 1px solid var(--border); padding: 16px 24px;
     background: var(--surface); display: none;
@@ -91,7 +155,7 @@
   .detail-note .label { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
   .detail-note .value { font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
 
-  /* 空狀態 */
+  /* Empty state */
   .empty { text-align: center; padding: 40px; color: var(--muted); }
   .empty code { background: var(--border); padding: 2px 6px; border-radius: 3px; font-size: 12px; }
 
@@ -103,6 +167,18 @@
 
   .direction-LONG  { color: var(--green); }
   .direction-SHORT { color: var(--red); }
+
+  @media (max-width: 820px) {
+    html, body { overflow: auto; }
+    header { flex-direction: column; align-items: flex-start; gap: 12px; }
+    .header-controls { width: 100%; }
+    .symbol-picker, .symbol-button { flex: 1; width: 100%; }
+    .symbol-menu { left: 0; right: auto; width: 100%; }
+    .layout { grid-template-columns: 1fr; min-height: auto; overflow: visible; }
+    .sidebar { border-right: none; border-bottom: 1px solid var(--border); max-height: 460px; }
+    .chart-area { min-height: 420px; }
+    .detail-grid { grid-template-columns: repeat(2, 1fr); }
+  }
 </style>
 </head>
 <body>
@@ -115,27 +191,28 @@
 </div>
 
 <header>
-  <h1>⚡ CHRONOS</h1>
-  <div class="meta">BTCUSDT · 1H · 最後更新：<span id="lastUpdate">—</span></div>
+  <div class="brand">
+    <h1>⚡ CHRONOS</h1>
+    <div class="meta">BTCUSDT · 1H · 最後更新：<span id="lastUpdate">—</span></div>
+  </div>
+  <div class="header-controls" id="headerControls"></div>
 </header>
 
 <div class="layout">
-  <!-- 左側：統計 + 訊號列表 -->
+  <!-- Sidebar: summary and latest signals -->
   <div class="sidebar">
-    <!-- 策略績效 -->
     <div class="card" id="summaryCard">
       <div class="card-title">策略績效</div>
       <div id="summaryContent"><div class="empty">載入中...</div></div>
     </div>
 
-    <!-- 訊號列表 -->
     <div class="card" style="flex:1">
       <div class="card-title">訊號記錄</div>
       <div id="signalList"><div class="empty">載入中...</div></div>
     </div>
   </div>
 
-  <!-- 右側：圖表 + 詳情 -->
+  <!-- Main area: chart and signal detail -->
   <div class="main">
     <div class="chart-area">
       <canvas id="priceChart"></canvas>
@@ -153,12 +230,21 @@
 <script>
 const API = 'http://localhost:3001';
 const SUPPORTED_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'];
+const SIGNAL_LIST_LIMIT = 10;
+const THEME_KEY = 'chronos-theme';
+const STRATEGY_LABELS = {
+  TREND_LONG: '順勢多',
+  TREND_SHORT: '順勢空',
+  OVERSOLD_BOUNCE: '超賣反彈',
+  OBS_BIAS_LONG: '觀察多',
+  OBS_BIAS_SHORT: '觀察空',
+};
 let currentSymbol = new URLSearchParams(location.search).get('symbol') || 'BTCUSDT';
 let priceChart = null;
 let allSignals = [];
 let allKlines  = [];
 
-// ── fetch helpers ──
+// Fetch helpers
 async function fetchJson(url) {
   const r = await fetch(url);
   if (!r.ok) throw new Error(await r.text());
@@ -175,27 +261,106 @@ function updateHeaderSymbol() {
 }
 
 function initSymbolSelect() {
-  if (document.getElementById('symbolSelect')) return;
+  if (document.getElementById('symbolPicker')) return;
 
-  const select = document.createElement('select');
-  select.id = 'symbolSelect';
-  select.setAttribute('aria-label', '交易對');
-  select.style.cssText = 'background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px;margin-left:12px;';
-  select.innerHTML = SUPPORTED_SYMBOLS
-    .map(symbol => `<option value="${symbol}" ${symbol === currentSymbol ? 'selected' : ''}>${symbol}</option>`)
-    .join('');
-  select.onchange = () => {
-    currentSymbol = select.value;
-    updateHeaderSymbol();
-    history.replaceState(null, '', `?symbol=${encodeURIComponent(currentSymbol)}`);
-    init(false);
+  const picker = document.createElement('div');
+  picker.id = 'symbolPicker';
+  picker.className = 'symbol-picker';
+  picker.innerHTML = `
+    <button class="symbol-button" id="symbolButton" type="button" aria-haspopup="listbox" aria-expanded="false">${currentSymbol}</button>
+    <div class="symbol-menu" id="symbolMenu" role="listbox" aria-label="交易對">
+      ${SUPPORTED_SYMBOLS.map(symbol => `
+        <button class="symbol-option" type="button" role="option" data-symbol="${symbol}" aria-selected="${symbol === currentSymbol}">
+          ${symbol}
+        </button>
+      `).join('')}
+    </div>
+  `;
+
+  const button = picker.querySelector('#symbolButton');
+  const options = picker.querySelectorAll('.symbol-option');
+
+  button.onclick = () => {
+    const isOpen = picker.classList.toggle('open');
+    button.setAttribute('aria-expanded', String(isOpen));
   };
 
-  document.querySelector('header')?.appendChild(select);
+  options.forEach(option => {
+    option.onclick = () => {
+      currentSymbol = option.dataset.symbol;
+      button.textContent = currentSymbol;
+      options.forEach(item => item.setAttribute('aria-selected', String(item === option)));
+      picker.classList.remove('open');
+      button.setAttribute('aria-expanded', 'false');
+      updateHeaderSymbol();
+      history.replaceState(null, '', `?symbol=${encodeURIComponent(currentSymbol)}`);
+      init(false);
+    };
+  });
+
+  document.addEventListener('click', (event) => {
+    if (!picker.contains(event.target)) {
+      picker.classList.remove('open');
+      button.setAttribute('aria-expanded', 'false');
+    }
+  });
+
+  document.getElementById('headerControls')?.appendChild(picker);
   updateHeaderSymbol();
 }
 
-// ── 格式化 ──
+function getCssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+function chartColors() {
+  return {
+    text: getCssVar('--text'),
+    muted: getCssVar('--muted'),
+    border: getCssVar('--border'),
+    grid: getCssVar('--chart-grid'),
+    tooltipBg: getCssVar('--tooltip-bg'),
+    green: getCssVar('--green'),
+    red: getCssVar('--red'),
+    yellow: getCssVar('--yellow'),
+    blue: getCssVar('--blue'),
+  };
+}
+
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem(THEME_KEY, theme);
+
+  const toggle = document.getElementById('themeToggle');
+  if (toggle) toggle.textContent = theme === 'light' ? '夜間' : '日間';
+
+  if (allKlines.length) renderChart(allKlines, allSignals);
+}
+
+function initThemeToggle() {
+  if (document.getElementById('themeToggle')) return;
+
+  const savedTheme = localStorage.getItem(THEME_KEY) || 'dark';
+  document.documentElement.dataset.theme = savedTheme;
+
+  const button = document.createElement('button');
+  button.id = 'themeToggle';
+  button.className = 'theme-toggle';
+  button.type = 'button';
+  button.textContent = savedTheme === 'light' ? '夜間' : '日間';
+  button.onclick = () => {
+    const nextTheme = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+    applyTheme(nextTheme);
+  };
+
+  document.getElementById('headerControls')?.appendChild(button);
+}
+
+function strategyLabel(strategy) {
+  return STRATEGY_LABELS[strategy] || strategy;
+}
+
+// Formatting
 function fmtTime(ms) {
   return new Date(ms).toISOString().replace('T',' ').slice(0,16) + ' UTC';
 }
@@ -211,7 +376,7 @@ function outcomeLabel(o) {
   return map[o] || o;
 }
 
-// ── 渲染策略統計 ──
+// Render strategy summary
 function renderSummary(summary) {
   if (!summary || !Object.keys(summary).length) {
     document.getElementById('summaryContent').innerHTML =
@@ -223,7 +388,7 @@ function renderSummary(summary) {
     const rClass = s.avgR >= 0 ? 'green' : 'red';
     html += `
       <div style="margin-bottom:12px">
-        <div style="font-size:11px;font-weight:700;margin-bottom:6px">${name}</div>
+        <div style="font-size:12px;font-weight:700;margin-bottom:6px" title="${name}">${strategyLabel(name)}</div>
         <div class="stat-row"><span class="stat-label">樣本數</span><span class="stat-value">${s.total} 筆${s.total < 5 ? ' ⚠️' : ''}</span></div>
         <div class="stat-row"><span class="stat-label">勝 / 敗</span><span class="stat-value"><span class="green">${s.wins}</span> / <span class="red">${s.losses}</span></span></div>
         <div class="stat-row"><span class="stat-label">勝率</span><span class="stat-value ${s.winRate >= 50 ? 'green' : 'red'}">${s.winRate}%</span></div>
@@ -234,17 +399,17 @@ function renderSummary(summary) {
   document.getElementById('summaryContent').innerHTML = html;
 }
 
-// ── 渲染訊號列表 ──
+// Render latest signals only to keep the sidebar readable.
 function renderSignalList(signals) {
   if (!signals.length) {
     document.getElementById('signalList').innerHTML =
       '<div class="empty">尚無訊號<br><code>fetchBTC.js</code> → <code>runVerification.js</code></div>';
     return;
   }
-  // 最新的排前面
   const sorted = [...signals].reverse();
-  let html = '';
-  for (const sig of sorted) {
+  const visibleSignals = sorted.slice(0, SIGNAL_LIST_LIMIT);
+  let html = `<div class="signal-list-note">顯示最新 ${visibleSignals.length} / ${signals.length} 筆，完整資料仍保留於 JSON。</div>`;
+  for (const sig of visibleSignals) {
     const v = sig.verification;
     const outcome = v?.outcome ?? 'PENDING';
     const r = v?.rMultiple;
@@ -252,7 +417,7 @@ function renderSignalList(signals) {
     html += `
       <div class="signal-item" data-id="${sig.id}" onclick="selectSignal('${sig.id}')">
         <div class="signal-header">
-          <span class="signal-strategy direction-${sig.direction}">${sig.direction} · ${sig.strategy.replace('TREND_','')}</span>
+          <span class="signal-strategy direction-${sig.direction}" title="${sig.strategy}">${strategyLabel(sig.strategy)}</span>
           <span class="signal-outcome outcome-${outcome}">${outcomeLabel(outcome)}</span>
         </div>
         <div class="signal-meta">${fmtTime(sig.openTime)}</div>
@@ -265,7 +430,7 @@ function renderSignalList(signals) {
   document.getElementById('signalList').innerHTML = html;
 }
 
-// ── 選取訊號 → 顯示詳情 + 在圖表標記 ──
+// Select a signal and render detail panel.
 function selectSignal(id) {
   document.querySelectorAll('.signal-item').forEach(el => el.classList.remove('selected'));
   document.querySelector(`[data-id="${id}"]`)?.classList.add('selected');
@@ -309,32 +474,125 @@ function selectSignal(id) {
     detailNoteContent.textContent = '';
   }
 
-  // 在圖表上標記進場點
+  // Reserved for future chart annotation.
   highlightSignalOnChart(sig);
 }
 
-// ── 繪製價格 + 指標圖 ──
+const candlestickPlugin = {
+  id: 'candlestickOverlay',
+  beforeDatasetsDraw(chart, _args, options) {
+    const candles = options.candles || [];
+    if (!candles.length) return;
+
+    const { ctx, chartArea, scales } = chart;
+    const xScale = scales.x;
+    const yScale = scales.y;
+    const colors = chartColors();
+    const candleWidth = Math.max(3, Math.min(9, chartArea.width / candles.length * .55));
+
+    ctx.save();
+    ctx.lineWidth = 1;
+    candles.forEach((kline, index) => {
+      if ([kline.open, kline.high, kline.low, kline.close].some(value => value == null)) return;
+
+      const x = xScale.getPixelForValue(index);
+      const openY = yScale.getPixelForValue(kline.open);
+      const closeY = yScale.getPixelForValue(kline.close);
+      const highY = yScale.getPixelForValue(kline.high);
+      const lowY = yScale.getPixelForValue(kline.low);
+      const isUp = kline.close >= kline.open;
+      const color = isUp ? colors.green : colors.red;
+      const bodyTop = Math.min(openY, closeY);
+      const bodyHeight = Math.max(1, Math.abs(closeY - openY));
+
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+      ctx.globalAlpha = .9;
+      ctx.beginPath();
+      ctx.moveTo(x, highY);
+      ctx.lineTo(x, lowY);
+      ctx.stroke();
+      ctx.globalAlpha = .88;
+      ctx.fillRect(x - candleWidth / 2, bodyTop, candleWidth, bodyHeight);
+      ctx.globalAlpha = .95;
+      ctx.strokeRect(x - candleWidth / 2, bodyTop, candleWidth, bodyHeight);
+    });
+    ctx.restore();
+  },
+};
+
+const signalMarkerPlugin = {
+  id: 'signalMarkerOverlay',
+  afterDatasetsDraw(chart, _args, options) {
+    const markers = options.markers || [];
+    const candles = options.candles || [];
+    if (!markers.length) return;
+
+    const { ctx, scales } = chart;
+    const xScale = scales.x;
+    const yScale = scales.y;
+    const colors = chartColors();
+
+    ctx.save();
+    markers.forEach((marker, index) => {
+      if (!marker || !candles[index]) return;
+
+      const candle = candles[index];
+      const color = markerColor(marker, colors);
+      const x = xScale.getPixelForValue(index);
+      const anchor = marker.direction === 'LONG'
+        ? yScale.getPixelForValue(candle.low) + 10
+        : yScale.getPixelForValue(candle.high) - 10;
+      const size = 5;
+
+      ctx.fillStyle = color;
+      ctx.strokeStyle = getCssVar('--bg');
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      if (marker.direction === 'LONG') {
+        ctx.moveTo(x, anchor - size);
+        ctx.lineTo(x - size, anchor + size);
+        ctx.lineTo(x + size, anchor + size);
+      } else {
+        ctx.moveTo(x, anchor + size);
+        ctx.lineTo(x - size, anchor - size);
+        ctx.lineTo(x + size, anchor - size);
+      }
+      ctx.closePath();
+      ctx.stroke();
+      ctx.fill();
+    });
+    ctx.restore();
+  },
+};
+
+Chart.register(candlestickPlugin, signalMarkerPlugin);
+
+function markerColor(marker, colors) {
+  const outcome = marker.outcome || '';
+  if (outcome.startsWith('WIN')) return colors.green;
+  if (outcome === 'LOSS' || outcome.endsWith('LOSS')) return colors.red;
+  return colors.yellow;
+}
+
+// Render price, candlesticks, and indicators.
 function renderChart(klines, signals) {
+  const colors = chartColors();
   const labels   = klines.map(k => new Date(k.openTime).toISOString().slice(5,16).replace('T',' '));
   const closes   = klines.map(k => k.close);
   const ema20    = klines.map(k => k.indicators?.ema20  ?? null);
   const ema50    = klines.map(k => k.indicators?.ema50  ?? null);
   const ema200   = klines.map(k => k.indicators?.ema200 ?? null);
+  const lows     = klines.map(k => k.low).filter(value => value != null);
+  const highs    = klines.map(k => k.high).filter(value => value != null);
+  const yPadding = (Math.max(...highs) - Math.min(...lows)) * .05;
 
-  // 訊號標注
+  // Signal markers
   const signalPoints = klines.map(k => {
     const sig = signals.find(s => s.openTime === k.openTime);
     if (!sig) return null;
     return { price: sig.entryPrice, direction: sig.direction, outcome: sig.verification?.outcome };
   });
-
-  const pointColors = signalPoints.map(p => {
-    if (!p) return 'transparent';
-    if (p.outcome?.startsWith('WIN')) return '#3fb950';
-    if (p.outcome === 'LOSS')         return '#f85149';
-    return '#d29922';
-  });
-  const pointSizes = signalPoints.map(p => p ? 8 : 0);
 
   if (priceChart) priceChart.destroy();
 
@@ -346,24 +604,26 @@ function renderChart(klines, signals) {
       datasets: [
         {
           label: 'Close', data: closes,
-          borderColor: '#58a6ff', borderWidth: 1.5,
-          pointRadius: pointSizes, pointBackgroundColor: pointColors,
-          pointHoverRadius: 6, tension: 0,
+          borderColor: colors.blue, borderWidth: 1,
+          borderDash: [3, 4],
+          pointRadius: 0, pointHoverRadius: 0, tension: 0,
           fill: false,
         },
-        { label: 'EMA20',  data: ema20,  borderColor: '#3fb950', borderWidth: 1, pointRadius: 0, tension: 0, fill: false },
-        { label: 'EMA50',  data: ema50,  borderColor: '#d29922', borderWidth: 1, pointRadius: 0, tension: 0, fill: false },
-        { label: 'EMA200', data: ema200, borderColor: '#f85149', borderWidth: 1, pointRadius: 0, tension: 0, fill: false },
+        { label: 'EMA20',  data: ema20,  borderColor: colors.green, borderWidth: 1, pointRadius: 0, tension: 0, fill: false },
+        { label: 'EMA50',  data: ema50,  borderColor: colors.yellow, borderWidth: 1, pointRadius: 0, tension: 0, fill: false },
+        { label: 'EMA200', data: ema200, borderColor: colors.red, borderWidth: 1, pointRadius: 0, tension: 0, fill: false },
       ],
     },
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { labels: { color: '#8b949e', boxWidth: 20, font: { size: 11 } } },
+        candlestickOverlay: { candles: klines },
+        signalMarkerOverlay: { candles: klines, markers: signalPoints },
+        legend: { labels: { color: colors.muted, boxWidth: 20, font: { size: 11 } } },
         tooltip: {
-          backgroundColor: '#161b22', borderColor: '#30363d', borderWidth: 1,
-          titleColor: '#e6edf3', bodyColor: '#8b949e',
+          backgroundColor: colors.tooltipBg, borderColor: colors.border, borderWidth: 1,
+          titleColor: colors.text, bodyColor: colors.muted,
           callbacks: {
             afterBody: (items) => {
               const idx = items[0]?.dataIndex;
@@ -375,22 +635,30 @@ function renderChart(klines, signals) {
         }
       },
       scales: {
-        x: { ticks: { color: '#8b949e', maxTicksLimit: 12, font: { size: 10 } }, grid: { color: '#21262d' } },
-        y: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: '#21262d' } },
+        x: { ticks: { color: colors.muted, maxTicksLimit: 12, font: { size: 10 } }, grid: { color: colors.grid } },
+        y: {
+          suggestedMin: Math.min(...lows) - yPadding,
+          suggestedMax: Math.max(...highs) + yPadding,
+          ticks: { color: colors.muted, font: { size: 10 } },
+          grid: { color: colors.grid },
+        },
       },
     },
   });
 }
 
-// ── 高亮圖表上的訊號點（未來擴充用，目前靠顏色區分）──
+// Future extension point for active signal annotation.
 function highlightSignalOnChart(sig) {
-  // 可在此加入 annotation 或縮放至進場點範圍
+  // Add annotation or viewport focus here if signal drill-down becomes necessary.
 }
 
-// ── 主初始化 ──
+// Main initialization
 async function init(shouldInitSymbols = true) {
   try {
-    if (shouldInitSymbols) initSymbolSelect();
+    if (shouldInitSymbols) {
+      initSymbolSelect();
+      initThemeToggle();
+    }
 
     const [signals, klines, summary] = await Promise.all([
       fetchJson(apiUrl('/api/signals')),
@@ -409,7 +677,7 @@ async function init(shouldInitSymbols = true) {
     renderSignalList(signals);
     renderChart(klines, signals);
 
-    // 預設選取最新訊號
+    // Select the latest signal by default.
     if (signals.length) selectSignal(signals[signals.length - 1].id);
 
   } catch (err) {

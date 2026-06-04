@@ -3,10 +3,10 @@ const axios = require("axios");
 const BASE_URL = "https://api.binance.com";
 
 /**
- * 抓取 K 線資料
- * @param {string} symbol  - 交易對，例如 "BTCUSDT"
- * @param {string} interval - 時間框架 "1h" | "4h" | "1d"
- * @param {number} limit    - 根數，最大 1000，EMA200 建議 >= 300
+ * Fetch candlestick data.
+ * @param {string} symbol - Trading pair, e.g. "BTCUSDT".
+ * @param {string} interval - Timeframe: "1h" | "4h" | "1d".
+ * @param {number} limit - Number of candles, max 1000; EMA200 should use >= 300.
  */
 async function fetchKlines({ symbol = "BTCUSDT", interval = "1h", limit = 300 }) {
   try {
@@ -17,14 +17,14 @@ async function fetchKlines({ symbol = "BTCUSDT", interval = "1h", limit = 300 })
 
     return response.data.map((k) => ({
       openTime:     k[0],                    // ms timestamp
-      open:         parseFloat(k[1]),         // ✅ 修正：String → Float
+      open:         parseFloat(k[1]),         // Binance returns strings; store numeric OHLCV.
       high:         parseFloat(k[2]),
       low:          parseFloat(k[3]),
       close:        parseFloat(k[4]),
       volume:       parseFloat(k[5]),
       closeTime:    k[6],
-      quoteVolume:  parseFloat(k[7]),         // ✅ 新增：USDT 成交量（比 BTC 量更直觀）
-      trades:       k[8],                     // ✅ 新增：成交筆數，用於量能確認
+      quoteVolume:  parseFloat(k[7]),         // Quote volume is more intuitive for USDT pairs.
+      trades:       k[8],                     // Trade count can help future volume confirmation.
     }));
   } catch (error) {
     console.error(`[binanceService] fetchKlines failed (${symbol} ${interval}):`, error.message);
@@ -33,15 +33,15 @@ async function fetchKlines({ symbol = "BTCUSDT", interval = "1h", limit = 300 })
 }
 
 /**
- * 一次抓多個時間框架（BTC / ETH 通用）
+ * Fetch all supported timeframes for one symbol.
  * @param {string} symbol
  * @returns {{ "1h": [...], "4h": [...], "1d": [...] }}
  */
 async function fetchMultiTimeframe(symbol = "BTCUSDT") {
   const configs = [
-    { interval: "1h",  limit: 300 },   // 300根 1h ≈ 12天，EMA200 夠用
-    { interval: "4h",  limit: 200 },   // 200根 4h ≈ 33天
-    { interval: "1d",  limit: 200 },   // 200根 1d ≈ 200天，長期趨勢
+    { interval: "1h",  limit: 300 },   // About 12 days; enough warm-up for EMA200.
+    { interval: "4h",  limit: 200 },   // About 33 days.
+    { interval: "1d",  limit: 200 },   // About 200 days for long-term context.
   ];
 
   const results = await Promise.all(

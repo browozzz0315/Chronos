@@ -1,21 +1,21 @@
 /**
  * verifyService.js
- * 延遲驗證系統（Step 9）
+ * Delayed verification system (Step 9).
  *
- * 邏輯：
- *   給定一個訊號（含進場價、方向、進場時間）
- *   從進場後的 K 線逐根掃描，判斷是否先碰到 TP 或 SL
+ * Logic:
+ *   Given a signal with entry price, direction, and entry time,
+ *   scan later candles and determine whether TP or SL is reached first.
  *
- * SL / TP 計算方式：
- *   SL = 1.5 × ATR14（進場當根的 ATR）
- *   TP1 = 1.5 × ATR（RR 1:1）
- *   TP2 = 3.0 × ATR（RR 1:2）
- *   TP3 = 4.5 × ATR（RR 1:3）
- *   使用 ATR 倍數而非固定點數，不同幣種結果才能互相比較
+ * SL / TP levels:
+ *   SL = 1.5 * ATR14 from the entry candle.
+ *   TP1 = 1.5 * ATR, RR 1:1.
+ *   TP2 = 3.0 * ATR, RR 1:2.
+ *   TP3 = 4.5 * ATR, RR 1:3.
+ *   ATR-based levels make results more comparable across symbols.
  */
 
 // ─────────────────────────────────────────────
-// 計算進場後的止盈止損價位
+// Calculate stop-loss and take-profit levels after entry.
 // ─────────────────────────────────────────────
 function calcLevels(entryPrice, direction, atr) {
   const sl   = atr * 1.5;
@@ -43,28 +43,28 @@ function calcLevels(entryPrice, direction, atr) {
 }
 
 // ─────────────────────────────────────────────
-// 單筆訊號驗證
-// 輸入：
-//   signal   - 訊號物件（含 openTime, entryPrice, direction）
-//   klines   - 完整 K 線陣列（含 indicators）
-//   maxBars  - 最多看幾根後就算逾時（預設 24 根 = 24h）
+// Verify a single signal.
+// Inputs:
+//   signal   - Signal object with openTime, entryPrice, and direction.
+//   klines   - Full candle array with indicators.
+//   maxBars  - Maximum candles to inspect before timeout, default 24.
 // ─────────────────────────────────────────────
 function verifySignal(signal, klines, maxBars = 24) {
   const { entryPrice, direction, openTime } = signal;
 
-  // 找進場 K 線的 index
+  // Locate the entry candle.
   const entryIndex = klines.findIndex((k) => k.openTime === openTime);
   if (entryIndex === -1) return { outcome: "NOT_FOUND" };
 
-  // 取進場當根的 ATR（若 null 則用收盤價的 0.8% 估算）
+  // Use entry ATR; fall back to 0.8% of entry price if ATR is unavailable.
   const entryKline = klines[entryIndex];
   const atr = entryKline.indicators.atr14 ?? entryPrice * 0.008;
 
   const levels = calcLevels(entryPrice, direction, atr);
 
-  // 逐根掃描進場後的 K 線
-  let maxFavorable  = 0;   // 最大有利浮動（用來算 MFE）
-  let maxAdverse    = 0;   // 最大不利浮動（用來算 MAE）
+  // Scan candles after entry.
+  let maxFavorable  = 0;   // Maximum favorable excursion.
+  let maxAdverse    = 0;   // Maximum adverse excursion.
   let tp1Hit = false, tp2Hit = false, tp3Hit = false;
   let slHit  = false;
   let exitPrice    = null;
@@ -88,7 +88,7 @@ function verifySignal(signal, klines, maxBars = 24) {
       if (favorable > maxFavorable) maxFavorable = favorable;
       if (adverse   > maxAdverse)   maxAdverse   = adverse;
 
-      // 先判斷同一根內是否同時碰到 SL 和 TP（用開盤方向判斷誰先）
+      // Conservative rule: if SL and TP1 are both touched before TP1 is locked, count SL first.
       const slHitNow  = low  <= levels.sl;
       const tp1HitNow = high >= levels.tp1;
 
@@ -125,7 +125,7 @@ function verifySignal(signal, klines, maxBars = 24) {
     }
   }
 
-  // 逾時（maxBars 內沒碰到 SL 或 TP3）
+  // Timeout or still-pending case when neither SL nor TP3 was reached.
   if (!slHit && !tp3Hit) {
     const lastBar = klines[entryIndex + checkBars];
     exitPrice  = lastBar?.close ?? entryPrice;
@@ -133,15 +133,15 @@ function verifySignal(signal, klines, maxBars = 24) {
     exitReason = isCompleteWindow ? "TIMEOUT" : "PENDING";
   }
 
-  // 計算結果
+  // Calculate result metrics.
   const priceDiff = direction === "LONG"
     ? exitPrice - entryPrice
     : entryPrice - exitPrice;
 
-  const rMultiple = parseFloat((priceDiff / levels.slDist).toFixed(3)); // R 倍數
+  const rMultiple = parseFloat((priceDiff / levels.slDist).toFixed(3)); // R multiple.
   const pnlPct    = parseFloat((priceDiff / entryPrice * 100).toFixed(3));
 
-  // 勝負判斷：碰到 TP1 以上算贏，SL 或 TIMEOUT 且虧損算輸
+  // Outcome classification: TP1+ is a win, SL is a loss, incomplete windows are pending.
   let outcome;
   if (slHit)              outcome = "LOSS";
   else if (tp3Hit)        outcome = "WIN_TP3";
@@ -156,11 +156,11 @@ function verifySignal(signal, klines, maxBars = 24) {
     outcome,
     exitPrice,
     exitReason,
-    exitBar,         // 第幾根後出場
+    exitBar,         // Number of candles after entry.
     checkedBars: checkBars,
     isComplete: isCompleteWindow || slHit || tp3Hit,
-    rMultiple,       // +2.1 代表賺了 2.1R，-1 代表完整止損
-    pnlPct,          // 不含槓桿的百分比
+    rMultiple,       // +2.1 means +2.1R; -1 means full stop loss.
+    pnlPct,          // Percentage move without leverage.
     tp1Hit, tp2Hit, tp3Hit, slHit,
     mfe: parseFloat(maxFavorable.toFixed(2)),  // Maximum Favorable Excursion
     mae: parseFloat(maxAdverse.toFixed(2)),    // Maximum Adverse Excursion
@@ -169,7 +169,7 @@ function verifySignal(signal, klines, maxBars = 24) {
 }
 
 // ─────────────────────────────────────────────
-// 批次驗證所有訊號
+// Verify all signals in batch.
 // ─────────────────────────────────────────────
 function verifyAll(signals, klines, maxBars = 24) {
   return signals.map((sig) => {
@@ -179,7 +179,7 @@ function verifyAll(signals, klines, maxBars = 24) {
 }
 
 // ─────────────────────────────────────────────
-// 統計摘要（給 Dashboard 或 log 用）
+// Build summary statistics for dashboard and logs.
 // ─────────────────────────────────────────────
 function summarize(verifiedSignals) {
   const byStrategy = {};

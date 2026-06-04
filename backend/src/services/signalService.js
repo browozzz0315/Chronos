@@ -1,24 +1,24 @@
 /**
  * signalService.js
- * 規則型訊號產生器（Step 8）
+ * Rule-based signal generator (Step 8).
  *
- * 設計原則：
- * - 每個策略都是獨立函式，方便日後個別驗證勝率
- * - 每個訊號記錄「觸發條件快照」，延遲驗證時才知道當時為什麼進場
- * - EMA200 若為 null（資料不足）會自動 skip，不產生假訊號
- * - Step 11.5 起加入訊號品質控管，避免同一段趨勢每根 K 都重複出訊號
+ * Design notes:
+ * - Each strategy is an isolated function so win rate can be reviewed separately.
+ * - Each signal stores its trigger conditions and indicator snapshot for delayed verification.
+ * - EMA200 can be null during warm-up; incomplete rows are skipped to avoid false signals.
+ * - Signal quality controls prevent repeated entries on every candle in the same trend leg.
  */
 
-// 訊號品質控管預設值，可在 generateSignals(klines, options) 傳入覆蓋。
+// Default quality controls; callers can override them through generateSignals(klines, options).
 const DEFAULT_SIGNAL_OPTIONS = {
   symbol: "BTCUSDT",
-  cooldownBars: 6,                // 同策略同方向至少間隔 N 根 K 才能再次出訊號
-  requireTrendTransition: true,   // 趨勢策略只在條件剛從 false 變 true 時進場
-  includeObservationSignals: true, // 看盤輔助用，每根收盤 K 嘗試產生方向判斷
-  observationMinScore: 2,          // 分數絕對值達門檻才輸出 OBS_BIAS 訊號
+  cooldownBars: 6,                // Same strategy and direction must wait N candles before firing again.
+  requireTrendTransition: true,   // Trend strategies only fire when conditions just changed from false to true.
+  includeObservationSignals: true, // Watchlist helper: produce directional observations on closed candles.
+  observationMinScore: 2,          // Minimum absolute score required for an OBS_BIAS signal.
 };
 
-// 技術指標可能是 null / undefined，統一用這個 helper 判斷可用數值。
+// Indicators can be null or undefined; use one helper for valid numeric checks.
 function hasNumber(value) {
   return typeof value === "number" && Number.isFinite(value);
 }
@@ -33,8 +33,8 @@ function directionScoreLabel(score) {
   return "NEUTRAL";
 }
 
-// 看盤輔助訊號：用多個常見動能/趨勢條件做方向投票。
-// 這不是嚴格交易策略，而是用來增加每根 K 的可驗證觀察樣本。
+// Observation signal: vote across common momentum/trend conditions.
+// This is not a strict trade setup; it creates verifiable watchlist samples per candle.
 function strategyObservationBias(kline, index, allKlines, options = {}) {
   const { close } = kline;
   const { ema20, ema50, ema200, rsi14, macdHist, adx, marketState } = kline.indicators || {};
@@ -97,7 +97,7 @@ function strategyObservationBias(kline, index, allKlines, options = {}) {
   };
 }
 
-// 輔助：計算最近 N 根的平均成交量。
+// Helper: average volume over the previous N candles.
 function avgVolume(klines, index, period = 20) {
   if (index < period) return null;
   const slice = klines.slice(index - period, index);
@@ -105,14 +105,14 @@ function avgVolume(klines, index, period = 20) {
 }
 
 // ─────────────────────────────────────────────────────
-// 策略 A：趨勢順勢做多
-// 條件：
-//   1. EMA20 > EMA50 > EMA200（多頭排列）
-//   2. RSI 在 45~65（不追高，動能健康）
-//   3. 收盤在 EMA20 上方（不在均線下方追多）
-//   4. MACD 柱狀圖為正（動能方向確認）
-//   5. ADX >= 20 或 ADX 尚不可用
-// 適合：趨勢盤做順勢回踩。
+// Strategy A: trend-following long.
+// Conditions:
+//   1. EMA20 > EMA50 > EMA200.
+//   2. RSI between 45 and 65, avoiding overextended entries.
+//   3. Close above EMA20.
+//   4. MACD histogram is positive.
+//   5. ADX >= 20, or ADX is not available yet.
+// Best used for pullback entries during an uptrend.
 // ─────────────────────────────────────────────────────
 function strategyTrendLong(kline) {
   const { close } = kline;
@@ -130,11 +130,11 @@ function strategyTrendLong(kline) {
   }
 
   const conditions = {
-    ema_alignment: ema20 > ema50 && ema50 > ema200,  // 多頭排列
-    rsi_healthy: rsi14 >= 45 && rsi14 <= 65,         // 動能健康區間
-    price_above_ema: close > ema20,                  // 收盤在 EMA20 上方
-    macd_positive: macdHist > 0,                     // 動能向上
-    adx_trending: !hasNumber(adx) || adx >= 20,      // 有趨勢；ADX 不足時先放行
+    ema_alignment: ema20 > ema50 && ema50 > ema200,  // Bullish EMA alignment.
+    rsi_healthy: rsi14 >= 45 && rsi14 <= 65,         // Healthy momentum zone.
+    price_above_ema: close > ema20,                  // Close above EMA20.
+    macd_positive: macdHist > 0,                     // Upward momentum.
+    adx_trending: !hasNumber(adx) || adx >= 20,      // Allow rows where ADX is still warming up.
   };
 
   if (!allConditionsPassed(conditions)) return null;
@@ -148,13 +148,13 @@ function strategyTrendLong(kline) {
 }
 
 // ─────────────────────────────────────────────────────
-// 策略 B：超賣反彈做多
-// 條件：
-//   1. RSI < 30（超賣）
-//   2. 當根成交量 > 20 期均量的 1.3 倍（量能放大，有人在接）
-//   3. 收盤在 EMA200 上方（大趨勢仍偏多，不做逆勢反彈）
-//   4. 前一根也是下跌（確認是在跌勢中超賣）
-// 適合：回調過深後的短反彈。
+// Strategy B: oversold bounce long.
+// Conditions:
+//   1. RSI < 30.
+//   2. Current volume is greater than 1.3x the 20-candle average.
+//   3. Close remains above EMA200 to avoid counter-trend bounce attempts.
+//   4. Previous candle is bearish, confirming an oversold pullback.
+// Best used for short rebounds after deep pullbacks.
 // ─────────────────────────────────────────────────────
 function strategyOversoldBounce(kline, index, allKlines) {
   const { close, volume } = kline;
@@ -170,10 +170,10 @@ function strategyOversoldBounce(kline, index, allKlines) {
   if (!avgVol || !prevKline) return null;
 
   const conditions = {
-    rsi_oversold: rsi14 < 30,                         // 超賣
-    volume_surge: volume > avgVol * 1.3,              // 成交量放大
-    above_ema200: close > ema200,                     // 大趨勢偏多
-    prev_was_bearish: prevKline.close < prevKline.open, // 前一根收陰線
+    rsi_oversold: rsi14 < 30,                         // Oversold.
+    volume_surge: volume > avgVol * 1.3,              // Volume expansion.
+    above_ema200: close > ema200,                     // Major trend remains bullish.
+    prev_was_bearish: prevKline.close < prevKline.open, // Previous candle closed bearish.
   };
 
   if (!allConditionsPassed(conditions)) return null;
@@ -187,14 +187,14 @@ function strategyOversoldBounce(kline, index, allKlines) {
 }
 
 // ─────────────────────────────────────────────────────
-// 策略 C：趨勢順勢做空
-// 策略 A 的鏡像版本
-// 條件：
-//   1. EMA20 < EMA50 < EMA200（空頭排列）
-//   2. RSI 在 35~55（不追空，動能健康偏空）
-//   3. 收盤在 EMA20 下方
-//   4. MACD 柱狀圖為負
-//   5. ADX >= 20 或 ADX 尚不可用
+// Strategy C: trend-following short.
+// Mirror version of Strategy A.
+// Conditions:
+//   1. EMA20 < EMA50 < EMA200.
+//   2. RSI between 35 and 55, avoiding overextended shorts.
+//   3. Close below EMA20.
+//   4. MACD histogram is negative.
+//   5. ADX >= 20, or ADX is not available yet.
 // ─────────────────────────────────────────────────────
 function strategyTrendShort(kline) {
   const { close } = kline;
@@ -212,11 +212,11 @@ function strategyTrendShort(kline) {
   }
 
   const conditions = {
-    ema_alignment: ema20 < ema50 && ema50 < ema200,  // 空頭排列
-    rsi_healthy: rsi14 >= 35 && rsi14 <= 55,         // 動能健康偏空區間
-    price_below_ema: close < ema20,                  // 收盤在 EMA20 下方
-    macd_negative: macdHist < 0,                     // 動能向下
-    adx_trending: !hasNumber(adx) || adx >= 20,      // 有趨勢；ADX 不足時先放行
+    ema_alignment: ema20 < ema50 && ema50 < ema200,  // Bearish EMA alignment.
+    rsi_healthy: rsi14 >= 35 && rsi14 <= 55,         // Healthy bearish momentum zone.
+    price_below_ema: close < ema20,                  // Close below EMA20.
+    macd_negative: macdHist < 0,                     // Downward momentum.
+    adx_trending: !hasNumber(adx) || adx >= 20,      // Allow rows where ADX is still warming up.
   };
 
   if (!allConditionsPassed(conditions)) return null;
@@ -229,12 +229,12 @@ function strategyTrendShort(kline) {
   };
 }
 
-// 趨勢策略需要 transition filter；反彈策略本身較像事件型訊號，暫不套用。
+// Trend strategies use a transition filter; bounce setups are event-like and do not use it.
 function isTrendStrategy(strategyName) {
   return strategyName === "TREND_LONG" || strategyName === "TREND_SHORT";
 }
 
-// 組合最終 signal 格式，保留 conditions / snapshot / quality 供 Dashboard 與驗證使用。
+// Build the final signal shape and keep conditions / snapshot / quality for dashboard and verification.
 function buildSignal(result, kline, options, quality) {
   return {
     id: `${result.strategy}_${kline.openTime}`,
@@ -250,12 +250,12 @@ function buildSignal(result, kline, options, quality) {
 }
 
 // ─────────────────────────────────────────────────────
-// 主入口：對整批 K 線跑所有策略
-// 回傳所有觸發的訊號（一根 K 線可能觸發多個策略）
+// Main entry: run all strategies against a full candle batch.
+// A single candle can trigger multiple strategies.
 //
-// 品質控管：
-// - cooldown：同策略同方向若距離上一筆太近，直接跳過
-// - trend transition：TREND_LONG / TREND_SHORT 只在條件剛成立時進場
+// Quality controls:
+// - cooldown: skip same-strategy same-direction signals that are too close together.
+// - trend transition: TREND_LONG / TREND_SHORT only fire when the setup has just become valid.
 // ─────────────────────────────────────────────────────
 function generateSignals(klines, options = {}) {
   const mergedOptions = { ...DEFAULT_SIGNAL_OPTIONS, ...options };
@@ -281,7 +281,7 @@ function generateSignals(klines, options = {}) {
         ? null
         : i - previousSignalIndex;
 
-      // 避免同一段趨勢中每根 K 都重複出同方向訊號。
+      // Avoid repeated same-direction signals on every candle within one trend leg.
       if (
         barsSinceLastSignal != null &&
         barsSinceLastSignal < mergedOptions.cooldownBars
@@ -291,7 +291,7 @@ function generateSignals(klines, options = {}) {
 
       let passedTransitionFilter = true;
       if (mergedOptions.requireTrendTransition && isTrendStrategy(result.strategy)) {
-        // 只有「上一根未成立、這一根成立」才視為新的趨勢進場點。
+        // Only a false-to-true transition is treated as a new trend entry point.
         const previousResult = strategy(klines[i - 1], i - 1, klines);
         passedTransitionFilter = previousResult === null;
       }

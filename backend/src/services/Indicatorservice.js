@@ -1,20 +1,20 @@
 /**
  * indicatorService.js
- * 技術指標計算模組
- * 純手寫實作（無外部依賴），方便理解邏輯
+ * Technical indicator calculation module.
+ * Pure handwritten implementation with no external dependency.
  *
- * 輸出格式：所有指標都與 K 線對齊，前幾根不夠計算的補 null
+ * Output format: all indicators align with the candle array; warm-up rows use null.
  */
 
 // ─────────────────────────────────────────────
-// EMA（指數移動平均）
-// k = 2 / (period + 1)，Wilder 版本用 1/period
+// EMA (Exponential Moving Average).
+// k = 2 / (period + 1); Wilder smoothing uses 1 / period.
 // ─────────────────────────────────────────────
 function calcEMA(closes, period) {
   const k = 2 / (period + 1);
   const result = new Array(closes.length).fill(null);
 
-  // 第一個有效值用 SMA 初始化
+  // Initialize the first valid EMA value with SMA.
   let sum = 0;
   for (let i = 0; i < period; i++) sum += closes[i];
   result[period - 1] = sum / period;
@@ -27,7 +27,7 @@ function calcEMA(closes, period) {
 }
 
 // ─────────────────────────────────────────────
-// RSI（相對強弱指標），預設 14 期
+// RSI (Relative Strength Index), default 14 periods.
 // ─────────────────────────────────────────────
 function calcRSI(closes, period = 14) {
   const result = new Array(closes.length).fill(null);
@@ -36,7 +36,7 @@ function calcRSI(closes, period = 14) {
   let avgGain = 0;
   let avgLoss = 0;
 
-  // 初始化：計算前 period 根的平均漲跌
+  // Initialize with average gains and losses over the first period.
   for (let i = 1; i <= period; i++) {
     const diff = closes[i] - closes[i - 1];
     if (diff > 0) avgGain += diff;
@@ -48,7 +48,7 @@ function calcRSI(closes, period = 14) {
   const rs0 = avgLoss === 0 ? Infinity : avgGain / avgLoss;
   result[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + rs0);
 
-  // Wilder 平滑
+  // Wilder smoothing.
   for (let i = period + 1; i < closes.length; i++) {
     const diff = closes[i] - closes[i - 1];
     const gain = diff > 0 ? diff : 0;
@@ -65,8 +65,8 @@ function calcRSI(closes, period = 14) {
 }
 
 // ─────────────────────────────────────────────
-// MACD（移動平均收斂發散指標）
-// 預設：快線 12，慢線 26，信號線 9
+// MACD (Moving Average Convergence Divergence).
+// Defaults: fast 12, slow 26, signal 9.
 // ─────────────────────────────────────────────
 function calcMACD(closes, fastPeriod = 12, slowPeriod = 26, signalPeriod = 9) {
   const emaFast   = calcEMA(closes, fastPeriod);
@@ -77,11 +77,11 @@ function calcMACD(closes, fastPeriod = 12, slowPeriod = 26, signalPeriod = 9) {
       : null
   );
 
-  // Signal line = EMA9 of MACD line（只對有值的部分計算）
+  // Signal line = EMA9 of MACD line, calculated only on valid MACD values.
   const macdValues  = macdLine.filter((v) => v !== null);
   const signalRaw   = calcEMA(macdValues, signalPeriod);
 
-  // 對齊回完整長度
+  // Align the signal line back to the full candle length.
   const offset      = macdLine.length - macdValues.length;
   const signalLine  = new Array(macdLine.length).fill(null);
   for (let i = 0; i < signalRaw.length; i++) {
@@ -100,14 +100,14 @@ function calcMACD(closes, fastPeriod = 12, slowPeriod = 26, signalPeriod = 9) {
 }
 
 // ─────────────────────────────────────────────
-// ATR（真實波動幅度均值）
-// 用於衡量波動率，也是 ADX 的基礎
+// ATR (Average True Range).
+// Used for volatility measurement and as the base of ADX.
 // ─────────────────────────────────────────────
 function calcATR(highs, lows, closes, period = 14) {
   const result = new Array(closes.length).fill(null);
   if (closes.length < period + 1) return result;
 
-  const trueRanges = [null]; // index 0 沒有前一根
+  const trueRanges = [null]; // Index 0 has no previous candle.
   for (let i = 1; i < closes.length; i++) {
     const tr = Math.max(
       highs[i] - lows[i],
@@ -117,7 +117,7 @@ function calcATR(highs, lows, closes, period = 14) {
     trueRanges.push(tr);
   }
 
-  // 第一個 ATR 用 SMA 初始化
+  // Initialize the first ATR with SMA.
   let atr = trueRanges.slice(1, period + 1).reduce((a, b) => a + b, 0) / period;
   result[period] = parseFloat(atr.toFixed(4));
 
@@ -130,9 +130,9 @@ function calcATR(highs, lows, closes, period = 14) {
 }
 
 // ─────────────────────────────────────────────
-// ADX（平均方向指數）
-// ADX > 25 → 趨勢盤；ADX < 20 → 震盪盤
-// +DI > -DI → 多頭趨勢；-DI > +DI → 空頭趨勢
+// ADX (Average Directional Index).
+// ADX > 25 indicates trend; ADX < 20 indicates range.
+// +DI > -DI indicates bullish trend; -DI > +DI indicates bearish trend.
 // ─────────────────────────────────────────────
 function calcADX(highs, lows, closes, period = 14) {
   const len    = closes.length;
@@ -161,7 +161,7 @@ function calcADX(highs, lows, closes, period = 14) {
     minusDMArr.push(minusDM);
   }
 
-  // Wilder 平滑（初始值用 sum）
+  // Wilder smoothing, initialized with sums.
   let smoothTR      = trArr.slice(0, period).reduce((a, b) => a + b, 0);
   let smoothPlus    = plusDMArr.slice(0, period).reduce((a, b) => a + b, 0);
   let smoothMinus   = minusDMArr.slice(0, period).reduce((a, b) => a + b, 0);
@@ -176,7 +176,7 @@ function calcADX(highs, lows, closes, period = 14) {
   const dxArr = [];
 
   for (let i = period; i < trArr.length; i++) {
-    // Wilder 更新
+    // Wilder update.
     smoothTR    = smoothTR    - smoothTR    / period + trArr[i];
     smoothPlus  = smoothPlus  - smoothPlus  / period + plusDMArr[i];
     smoothMinus = smoothMinus - smoothMinus / period + minusDMArr[i];
@@ -192,7 +192,7 @@ function calcADX(highs, lows, closes, period = 14) {
 
     if (dxArr.length >= period) {
       if (dxArr.length === period) {
-        // ADX 初始值 = DX 的 SMA
+        // Initial ADX = SMA of DX values.
         const adxVal = dxArr.reduce((a, b) => a + b, 0) / period;
         adx[i + 1]   = parseFloat(adxVal.toFixed(2));
         dxSum        = adxVal;
@@ -207,7 +207,7 @@ function calcADX(highs, lows, closes, period = 14) {
 }
 
 // ─────────────────────────────────────────────
-// Bollinger Bands（布林通道）
+// Bollinger Bands.
 // ─────────────────────────────────────────────
 function calcBollingerBands(closes, period = 20, stdDevMult = 2) {
   const upper  = new Array(closes.length).fill(null);
@@ -228,13 +228,13 @@ function calcBollingerBands(closes, period = 20, stdDevMult = 2) {
 }
 
 // ─────────────────────────────────────────────
-// 市場狀態分類（Market Regime）
-// 這層非常重要：同一個 RSI 訊號在趨勢盤和震盪盤勝率差距 > 30%
+// Market regime classification.
+// This is important because the same RSI signal can behave very differently in trends and ranges.
 // ─────────────────────────────────────────────
 function classifyMarketState(adxValue, plusDI, minusDI, atrPercent) {
   if (adxValue === null) return "UNKNOWN";
 
-  let trend = "RANGING"; // 震盪
+  let trend = "RANGING";
   if (adxValue >= 25) {
     trend = plusDI >= minusDI ? "UPTREND" : "DOWNTREND";
   } else if (adxValue >= 20) {
@@ -249,9 +249,9 @@ function classifyMarketState(adxValue, plusDI, minusDI, atrPercent) {
 }
 
 // ─────────────────────────────────────────────
-// 主入口：一次計算所有指標
-// 輸入：K 線陣列（已解析為 Float 的版本）
-// 輸出：每根 K 線附加所有指標值
+// Main entry: calculate all indicators in one pass.
+// Input: candle array with numeric OHLCV fields.
+// Output: each candle receives an indicators object.
 // ─────────────────────────────────────────────
 function calcAllIndicators(klines) {
   const closes = klines.map((k) => k.close);

@@ -1,10 +1,10 @@
 /**
  * testSignals.js
- * 驗證 signalService 是否正確運作
- * 執行：node src/scripts/testSignals.js
+ * Verify signalService behavior.
+ * Run: node src/scripts/testSignals.js
  *
- * 這個腳本不呼叫 API，直接讀本地的 btc_1h_indicators.json
- * 目的：驗證訊號邏輯，不需要網路
+ * This script does not call external APIs. It reads local candle data and
+ * verifies signal logic without network access.
  */
 
 const fs   = require("fs");
@@ -41,7 +41,7 @@ function printDivider(title = "") {
 }
 
 // ─────────────────────────────────────────────
-// 測試 1：資料完整性檢查
+// Test 1: data integrity checks.
 // ─────────────────────────────────────────────
 function testDataIntegrity(klines) {
   printDivider("TEST 1: 資料完整性");
@@ -51,10 +51,10 @@ function testDataIntegrity(klines) {
   let nullCount = { ema200: 0, rsi14: 0, adx: 0 };
 
   for (const k of klines) {
-    // 型別檢查
+    // Type check.
     if (typeof k.close !== "number") floatOk = false;
 
-    // null 計數（前期資料不足是正常的）
+    // Null counts are expected during indicator warm-up.
     if (k.indicators.ema200 == null) nullCount.ema200++;
     if (k.indicators.rsi14  == null) nullCount.rsi14++;
     if (k.indicators.adx    == null) nullCount.adx++;
@@ -80,14 +80,14 @@ function testDataIntegrity(klines) {
 }
 
 // ─────────────────────────────────────────────
-// 測試 2：訊號產生結果
+// Test 2: signal generation results.
 // ─────────────────────────────────────────────
 function testSignalGeneration(klines, symbol) {
   printDivider("TEST 2: 訊號產生結果");
 
   const signals = generateSignals(klines, { symbol });
 
-  // 統計
+  // Group signals by strategy.
   const byStrategy = {};
   for (const sig of signals) {
     if (!byStrategy[sig.strategy]) byStrategy[sig.strategy] = [];
@@ -99,7 +99,7 @@ function testSignalGeneration(klines, symbol) {
     console.log(`    ${name.padEnd(20)}: ${arr.length} 個`);
   }
 
-  // 印出每個策略最新一筆訊號的詳情
+  // Print the latest signal detail for each strategy.
   console.log("\n  ── 各策略最新訊號詳情 ──");
   for (const [name, arr] of Object.entries(byStrategy)) {
     const sig = arr[arr.length - 1];
@@ -118,15 +118,15 @@ function testSignalGeneration(klines, symbol) {
 }
 
 // ─────────────────────────────────────────────
-// 測試 3：邊界條件 ── 手動給一根已知條件的假 K 線
-// 確認策略邏輯判斷本身是否正確
+// Test 3: boundary cases with synthetic candles.
+// Confirms that strategy condition checks work as expected.
 // ─────────────────────────────────────────────
 function testStrategyLogic() {
   printDivider("TEST 3: 策略邏輯邊界驗證（假資料）");
 
   const { strategyTrendLong, strategyOversoldBounce } = require("../services/signalService");
 
-  // Case A：應該觸發 TREND_LONG
+  // Case A: should trigger TREND_LONG.
   const bullishKline = {
     close: 80000, volume: 500,
     indicators: {
@@ -138,7 +138,7 @@ function testStrategyLogic() {
   const resultA = strategyTrendLong(bullishKline, 5, new Array(10).fill(bullishKline));
   console.log(`  Case A (應觸發 TREND_LONG)    : ${resultA ? "✅ 觸發" : "❌ 未觸發"}`);
 
-  // Case B：EMA 空頭排列，不應觸發 TREND_LONG
+  // Case B: bearish EMA alignment should not trigger TREND_LONG.
   const bearishKline = {
     close: 70000, volume: 300,
     indicators: {
@@ -150,7 +150,7 @@ function testStrategyLogic() {
   const resultB = strategyTrendLong(bearishKline, 5, new Array(10).fill(bearishKline));
   console.log(`  Case B (空頭排列，不觸發LONG) : ${resultB === null ? "✅ 正確未觸發" : "❌ 錯誤觸發了！"}`);
 
-  // Case C：RSI 超賣 + 量能放大，應觸發 OVERSOLD_BOUNCE
+  // Case C: oversold RSI plus volume surge should trigger OVERSOLD_BOUNCE.
   const prevKline = { open: 70500, close: 70000, volume: 200 };
   const oversoldKline = {
     close: 69500, volume: 500,
@@ -160,10 +160,10 @@ function testStrategyLogic() {
   const resultC = strategyOversoldBounce(oversoldKline, mockHistory.length - 1, mockHistory);
   console.log(`  Case C (超賣反彈，應觸發)     : ${resultC ? "✅ 觸發" : "❌ 未觸發"}`);
 
-  // Case D：RSI 超賣但在 EMA200 下方，不應觸發
+  // Case D: oversold below EMA200 should not trigger.
   const oversoldBelowEMA = {
     close: 60000, volume: 500,
-    indicators: { rsi14: 25, ema200: 65000 },  // close < ema200
+    indicators: { rsi14: 25, ema200: 65000 },  // Close < EMA200.
   };
   const mockHistory2 = [...new Array(20).fill({ open: 61000, close: 60500, volume: 200 }), prevKline, oversoldBelowEMA];
   const resultD = strategyOversoldBounce(oversoldBelowEMA, mockHistory2.length - 1, mockHistory2);
@@ -171,7 +171,7 @@ function testStrategyLogic() {
 }
 
 // ─────────────────────────────────────────────
-// 執行
+// Execute.
 // ─────────────────────────────────────────────
 async function main() {
   console.log("╔══════════════════════════════════════════════╗");
