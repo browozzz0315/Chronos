@@ -14,7 +14,7 @@ async function main() {
       `[pipeline] ${result.symbol}: signals=${result.signals.length}, ` +
       `strategies=${strategyNames.length ? strategyNames.join(",") : "none"}, ` +
       `history=${result.historyStats.nextCount}, ` +
-      `llm=${result.llm.enabled ? `${result.llm.provider || "configured"} +${result.llm.generated}` : "disabled"}`
+      `llm=${result.llm.enabled ? `${result.llm.provider || "configured"} selected=${result.llm.selected} +${result.llm.generated}${result.llm.rateLimited ? " rate_limited" : ""}` : "disabled"}`
     );
   }
 

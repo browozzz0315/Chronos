@@ -81,7 +81,7 @@ async function main() {
   await saveJson(verifiedFilename, finalVerified);
   console.log(`Saved data/${verifiedFilename}`);
   console.log(
-    `LLM: ${isLlmEnabled() ? `${llmResult.provider || "configured"} generated=${llmResult.generated}` : "disabled"}`
+    `LLM: ${isLlmEnabled() ? `${llmResult.provider || "configured"} selected=${llmResult.selected || 0} generated=${llmResult.generated}${llmResult.rateLimited ? " rate_limited" : ""}` : "disabled"}`
   );
 
   const historyStats = await upsertSignalHistory(historyFilename, finalVerified);

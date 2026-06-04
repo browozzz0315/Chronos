@@ -66,6 +66,13 @@ $env:CHRONOS_LLM_PROVIDER="groq"
 npm run report:daily
 ```
 
+LLM 用量控制：
+- Groq 預設模型為 `llama-3.3-70b-versatile`；若你曾設定 `GROQ_MODEL=openai/gpt-oss-20b`，建議先移除或改回 Llama 3.3
+- 預設只對 `signalType=TRADE` 的正式策略訊號產生少量逐筆解釋，避免 OBS 訊號大量觸發 429
+- 預設每次 pipeline 最多產生 3 筆訊號解釋：`CHRONOS_LLM_MAX_EXPLANATIONS_PER_RUN=3`
+- OBS 訊號會以批次統計、近期樣本、代表性樣本納入每日報告分析，不會每筆各打一個 API call
+- 可用 `CHRONOS_LLM_EXPLAIN_SIGNALS=all` 改成全部訊號，但不建議在 OBS 樣本很多時使用
+
 ---
 
 ## 專案結構

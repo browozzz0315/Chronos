@@ -28,7 +28,7 @@
 |---|---|---|
 | 6 | `binanceService.js` | 抓取多時間框架 K 線（1h/4h/1d），300 根，OHLCV 全部轉 Float |
 | 7 | `indicatorService.js` | EMA20/50/200、RSI14、MACD、ATR14、ADX14、Bollinger Bands、市場狀態分類 |
-| 8 | `signalService.js` | 規則型策略：TREND_LONG / TREND_SHORT / OVERSOLD_BOUNCE，另有 OBS_BIAS_LONG / OBS_BIAS_SHORT 觀察型預測 |
+| 8 | `signalService.js` | 規則型策略：TREND_LONG / TREND_SHORT / OVERSOLD_BOUNCE，另有 OBS_BIAS_LONG / OBS_BIAS_SHORT 觀察型預測(2026-06-05新增) |
 | 9 | `verifyService.js` | 延遲驗證：SL=1.5ATR、TP1/2/3=1.5/3/4.5ATR，計算 R 倍數、MFE、MAE |
 | 10 | `dashboardServer.js` + `index.html` | 純 Node http 伺服器，提供 API；HTML Dashboard 顯示圖表與訊號績效 |
 | 11 | `cronJob.js` + `pipelineService.js` | 每小時自動執行抓資料、計算指標、產生訊號、延遲驗證與存檔 |
@@ -315,7 +315,13 @@ Pending 不列入正式勝率與平均 R；它只表示目前後續走勢暫時�
 - `ChatGPT Plus` 與 `OpenAI API` 分開計費，不能直接把 Plus 訂閱當作 API 使用
 - OpenAI 請使用 `OPENAI_API_KEY`
 - Groq 請使用 `GROQ_API_KEY`
+- Groq 預設模型為 `llama-3.3-70b-versatile`，比 `openai/gpt-oss-20b` 更適合穩定輸出自然語言報告
 - Provider 可用 `CHRONOS_LLM_PROVIDER=openai` 或 `groq` 切換；不設定時自動依可用金鑰判斷
+- 預設只對 `signalType=TRADE` 的正式策略訊號產生少量逐筆解釋，OBS 訊號不逐筆呼叫 API
+- 預設每次 pipeline 最多產生 3 筆訊號解釋：`CHRONOS_LLM_MAX_EXPLANATIONS_PER_RUN=3`
+- 每日報告會把 OBS 以批次統計納入分析，包含策略摘要、近期樣本、代表性樣本與 observationAnalysis
+- 避免把完整 history 全部送入 LLM，以降低 token 與 429 風險
+- 若遇到 429，`llmService.js` 會做一次 backoff retry，仍失敗時停止本輪後續 LLM 呼叫
 
 ### Step 13.5（已完成）
 **OBS 觀察型方向預測**

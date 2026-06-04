@@ -45,6 +45,8 @@ async function runPipeline(symbol = "BTCUSDT", options = {}) {
       provider: llmResult.provider,
       generated: llmResult.generated,
       skipped: llmResult.skipped,
+      selected: llmResult.selected || 0,
+      rateLimited: Boolean(llmResult.rateLimited),
     },
     klinesByTimeframe: result,
   };
