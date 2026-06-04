@@ -3,7 +3,8 @@ const { calcAllIndicators } = require("./Indicatorservice");
 const { generateSignals } = require("./signalService");
 const { verifyAll, summarize } = require("./verifyService");
 const { saveJson } = require("../utils/saveJson");
-const { upsertSignalHistory } = require("../utils/signalHistory");
+const { enrichSignalsWithExplanations, isLlmEnabled } = require("./llmService");
+const { loadHistory, mergeSignalsWithHistory, upsertSignalHistory } = require("../utils/signalHistory");
 const { dataFilename, normalizeSymbol } = require("../utils/symbols");
 
 async function runPipeline(symbol = "BTCUSDT", options = {}) {
@@ -19,21 +20,32 @@ async function runPipeline(symbol = "BTCUSDT", options = {}) {
 
   const baseKlines = result["1h"] || [];
   const signals = generateSignals(baseKlines, { symbol: normalizedSymbol });
-  const verified = verifyAll(signals, baseKlines, verifyBars);
-  const summary = summarize(verified);
-
-  await saveJson(dataFilename(normalizedSymbol, "1h_verified"), verified);
-  const historyStats = await upsertSignalHistory(
-    dataFilename(normalizedSymbol, "1h_history"),
-    verified
+  const verifiedFilename = dataFilename(normalizedSymbol, "1h_verified");
+  const historyFilename = dataFilename(normalizedSymbol, "1h_history");
+  const history = loadHistory(historyFilename);
+  const verified = mergeSignalsWithHistory(
+    verifyAll(signals, baseKlines, verifyBars),
+    history
   );
+  const llmResult = await enrichSignalsWithExplanations(verified, options.llm);
+  const finalVerified = llmResult.signals;
+  const summary = summarize(finalVerified);
+
+  await saveJson(verifiedFilename, finalVerified);
+  const historyStats = await upsertSignalHistory(historyFilename, finalVerified);
 
   return {
     symbol: normalizedSymbol,
     signals,
-    verified,
+    verified: finalVerified,
     summary,
     historyStats,
+    llm: {
+      enabled: isLlmEnabled(options.llm?.provider),
+      provider: llmResult.provider,
+      generated: llmResult.generated,
+      skipped: llmResult.skipped,
+    },
     klinesByTimeframe: result,
   };
 }

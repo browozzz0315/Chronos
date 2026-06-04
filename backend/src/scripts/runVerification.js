@@ -1,9 +1,10 @@
 const fs = require("fs");
 const path = require("path");
 const { generateSignals } = require("../services/signalService");
+const { enrichSignalsWithExplanations, isLlmEnabled } = require("../services/llmService");
 const { verifyAll, summarize } = require("../services/verifyService");
 const { saveJson } = require("../utils/saveJson");
-const { upsertSignalHistory } = require("../utils/signalHistory");
+const { loadHistory, mergeSignalsWithHistory, upsertSignalHistory } = require("../utils/signalHistory");
 const { dataFilename, legacyDataFilename, normalizeSymbol } = require("../utils/symbols");
 
 function loadData(filename) {
@@ -41,8 +42,13 @@ async function main() {
   const symbol = normalizeSymbol(process.env.CHRONOS_SYMBOL || process.argv[2] || "BTCUSDT");
   const klines = loadSymbolData(symbol, "1h");
   const signals = generateSignals(klines, { symbol });
-  const verified = verifyAll(signals, klines, 24);
-  const summary = summarize(verified);
+  const historyFilename = dataFilename(symbol, "1h_history");
+  const verifiedFilename = dataFilename(symbol, "1h_verified");
+  const history = loadHistory(historyFilename);
+  const verified = mergeSignalsWithHistory(verifyAll(signals, klines, 24), history);
+  const llmResult = await enrichSignalsWithExplanations(verified);
+  const finalVerified = llmResult.signals;
+  const summary = summarize(finalVerified);
 
   console.log(`Symbol: ${symbol}`);
   console.log(`Loaded ${klines.length} candles`);
@@ -50,7 +56,7 @@ async function main() {
   console.log(`Signals: ${signals.length}`);
 
   printDivider("Verification results");
-  for (const sig of verified) {
+  for (const sig of finalVerified) {
     const v = sig.verification;
     console.log(
       `${sig.strategy} ${sig.direction} @ ${formatTime(sig.openTime)} -> ${v.outcome} ` +
@@ -71,15 +77,15 @@ async function main() {
     }
   }
 
-  await saveJson(dataFilename(symbol, "1h_verified"), verified);
-  console.log(`Saved data/${dataFilename(symbol, "1h_verified")}`);
-
-  const historyStats = await upsertSignalHistory(
-    dataFilename(symbol, "1h_history"),
-    verified
-  );
+  await saveJson(verifiedFilename, finalVerified);
+  console.log(`Saved data/${verifiedFilename}`);
   console.log(
-    `Updated data/${dataFilename(symbol, "1h_history")} ` +
+    `LLM: ${isLlmEnabled() ? `${llmResult.provider || "configured"} generated=${llmResult.generated}` : "disabled"}`
+  );
+
+  const historyStats = await upsertSignalHistory(historyFilename, finalVerified);
+  console.log(
+    `Updated data/${historyFilename} ` +
     `(history=${historyStats.nextCount}, new=${historyStats.inserted})`
   );
 }

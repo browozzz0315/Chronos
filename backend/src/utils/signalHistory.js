@@ -16,6 +16,30 @@ function loadHistory(filename) {
   return Array.isArray(data) ? data : [];
 }
 
+function indexSignalsById(signals) {
+  return new Map((signals || []).map((signal) => [signal.id, signal]));
+}
+
+/**
+ * Reuse persisted fields from history so repeated verification runs do not
+ * erase previously generated LLM explanations or other derived metadata.
+ */
+function mergeSignalsWithHistory(signals, history) {
+  const historyById = indexSignalsById(history);
+
+  return (signals || []).map((signal) => {
+    const previous = historyById.get(signal.id);
+    if (!previous) {
+      return signal;
+    }
+
+    return {
+      ...signal,
+      llm: signal.llm || previous.llm,
+    };
+  });
+}
+
 /**
  * Merge verified signals into a persistent history file.
  * - Same signal id: overwrite with newest payload
@@ -46,5 +70,6 @@ async function upsertSignalHistory(filename, signals) {
 
 module.exports = {
   loadHistory,
+  mergeSignalsWithHistory,
   upsertSignalHistory,
 };

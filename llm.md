@@ -1,6 +1,6 @@
 # Chronos — LLM 協作文件
 
-> 本文件專為 LLM（Claude 等）提供專案背景與協作脈絡。
+> 本文件專為 LLM（OpenAI / Groq 等）提供專案背景與協作脈絡。
 > 每次對話開始前請先閱讀此文件，以了解現況與規範。
 
 ---
@@ -264,8 +264,14 @@ chronos/
 
 ### Step 13（下一個要做的）
 **LLM 整合**
-- 每個訊號觸發時呼叫 Claude API 生成自然語言解釋
+- 每個訊號觸發時呼叫 OpenAI API 或 Groq API 生成自然語言解釋
 - 每日生成策略績效報告
+
+補充：
+- `ChatGPT Plus` 與 `OpenAI API` 分開計費，不能直接把 Plus 訂閱當作 API 使用
+- OpenAI 請使用 `OPENAI_API_KEY`
+- Groq 請使用 `GROQ_API_KEY`
+- Provider 可用 `CHRONOS_LLM_PROVIDER=openai` 或 `groq` 切換；不設定時自動依可用金鑰判斷
 
 ### Step 14
 **PostgreSQL 遷移**

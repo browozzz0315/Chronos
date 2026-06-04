@@ -49,6 +49,16 @@ node src/scripts/dashboardServer.js
 
 # 驗證訊號邏輯（不需網路，讀本地資料）
 node src/scripts/testSignals.js
+
+# Step 13：啟用 LLM 訊號解釋（可選）
+# ChatGPT Plus 不能直接當 API key，需另外準備 OPENAI_API_KEY
+$env:OPENAI_API_KEY="your_api_key"
+node src/scripts/runPipelineOnce.js
+
+# 或改用 Groq
+$env:GROQ_API_KEY="your_groq_api_key"
+$env:CHRONOS_LLM_PROVIDER="groq"
+node src/scripts/generateDailyReport.js
 ```
 
 ---

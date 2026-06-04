@@ -13,7 +13,8 @@ async function main() {
     console.log(
       `[pipeline] ${result.symbol}: signals=${result.signals.length}, ` +
       `strategies=${strategyNames.length ? strategyNames.join(",") : "none"}, ` +
-      `history=${result.historyStats.nextCount}`
+      `history=${result.historyStats.nextCount}, ` +
+      `llm=${result.llm.enabled ? `${result.llm.provider || "configured"} +${result.llm.generated}` : "disabled"}`
     );
   }
 

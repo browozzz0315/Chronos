@@ -9,6 +9,7 @@
     "dashboard": "node src/scripts/dashboardServer.js",
     "cron": "node src/scripts/cronJob.js",
     "pipeline": "node src/scripts/runPipelineOnce.js",
+    "report:daily": "node src/scripts/generateDailyReport.js",
     "test:signals": "node src/scripts/testSignals.js"
   },
   "keywords": [],

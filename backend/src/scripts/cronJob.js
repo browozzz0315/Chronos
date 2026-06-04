@@ -18,7 +18,8 @@ async function runCycle(trigger = "manual") {
       console.log(
         `[cron] ${result.symbol}: signals=${result.signals.length}, ` +
         `strategies=${strategyNames.length ? strategyNames.join(",") : "none"}, ` +
-        `history=${result.historyStats.nextCount}`
+        `history=${result.historyStats.nextCount}, ` +
+        `llm=${result.llm.enabled ? `${result.llm.provider || "configured"} +${result.llm.generated}` : "disabled"}`
       );
     }
 

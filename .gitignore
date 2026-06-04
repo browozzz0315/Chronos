@@ -44,6 +44,7 @@ Thumbs.db
 # =========================
 data/*.json
 data/*.csv
+data/*.md
 
 # Keep folder structure
 !data/.gitkeep

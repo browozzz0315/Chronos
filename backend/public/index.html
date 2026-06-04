@@ -84,6 +84,12 @@
   .detail-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
   .detail-item .label { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
   .detail-item .value { font-size: 14px; font-weight: 600; }
+  .detail-note {
+    margin-top: 14px; padding: 12px; border: 1px solid var(--border);
+    border-radius: 8px; background: rgba(88,166,255,.05);
+  }
+  .detail-note .label { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+  .detail-note .value { font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
 
   /* 空狀態 */
   .empty { text-align: center; padding: 40px; color: var(--muted); }
@@ -136,6 +142,10 @@
     </div>
     <div class="detail-panel" id="detailPanel">
       <div class="detail-grid" id="detailGrid"></div>
+      <div class="detail-note" id="detailNote" style="display:none">
+        <div class="label">LLM 解釋</div>
+        <div class="value" id="detailNoteContent"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -285,6 +295,19 @@ function selectSignal(id) {
   document.getElementById('detailGrid').innerHTML = items.map(it =>
     `<div class="detail-item"><div class="label">${it.label}</div><div class="value ${it.cls ?? ''}">${it.value}</div></div>`
   ).join('');
+
+  const detailNote = document.getElementById('detailNote');
+  const detailNoteContent = document.getElementById('detailNoteContent');
+  if (sig.llm?.explanation) {
+    detailNote.style.display = 'block';
+    detailNoteContent.textContent = sig.llm.explanation;
+  } else if (sig.llm?.error) {
+    detailNote.style.display = 'block';
+    detailNoteContent.textContent = `LLM 生成失敗：${sig.llm.error}`;
+  } else {
+    detailNote.style.display = 'none';
+    detailNoteContent.textContent = '';
+  }
 
   // 在圖表上標記進場點
   highlightSignalOnChart(sig);
