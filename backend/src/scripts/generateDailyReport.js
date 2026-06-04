@@ -41,7 +41,7 @@ function buildFallbackReport(symbol, summary, recentSignals, asOf) {
   } else {
     for (const [name, item] of Object.entries(summary)) {
       lines.push(
-        `${name}：樣本 ${item.total} 筆，勝率 ${item.winRate}%，平均 R ${item.avgR}。`
+        `${name}：完成樣本 ${item.total} 筆，pending ${item.pending || 0} 筆，勝率 ${item.winRate}%，平均 R ${item.avgR}。`
       );
     }
   }

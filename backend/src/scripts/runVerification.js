@@ -72,7 +72,8 @@ async function main() {
       const extra = s.total < 5 ? " sample too small" : "";
       console.log(
         `${name}: total=${s.total}, wins=${s.wins}, losses=${s.losses}, ` +
-        `timeouts=${s.timeouts}, winRate=${s.winRate}%, avgR=${s.avgR}${extra}`
+        `timeouts=${s.timeouts}, pending=${s.pending || 0}, ` +
+        `winRate=${s.winRate}%, avgR=${s.avgR}${extra}`
       );
     }
   }

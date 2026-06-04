@@ -14,6 +14,8 @@ const DEFAULT_SIGNAL_OPTIONS = {
   symbol: "BTCUSDT",
   cooldownBars: 6,                // 同策略同方向至少間隔 N 根 K 才能再次出訊號
   requireTrendTransition: true,   // 趨勢策略只在條件剛從 false 變 true 時進場
+  includeObservationSignals: true, // 看盤輔助用，每根收盤 K 嘗試產生方向判斷
+  observationMinScore: 2,          // 分數絕對值達門檻才輸出 OBS_BIAS 訊號
 };
 
 // 技術指標可能是 null / undefined，統一用這個 helper 判斷可用數值。
@@ -23,6 +25,76 @@ function hasNumber(value) {
 
 function allConditionsPassed(conditions) {
   return Object.values(conditions).every(Boolean);
+}
+
+function directionScoreLabel(score) {
+  if (score > 0) return "LONG";
+  if (score < 0) return "SHORT";
+  return "NEUTRAL";
+}
+
+// 看盤輔助訊號：用多個常見動能/趨勢條件做方向投票。
+// 這不是嚴格交易策略，而是用來增加每根 K 的可驗證觀察樣本。
+function strategyObservationBias(kline, index, allKlines, options = {}) {
+  const { close } = kline;
+  const { ema20, ema50, ema200, rsi14, macdHist, adx, marketState } = kline.indicators || {};
+
+  if (
+    !hasNumber(close) ||
+    !hasNumber(ema20) ||
+    !hasNumber(ema50) ||
+    !hasNumber(ema200) ||
+    !hasNumber(rsi14) ||
+    !hasNumber(macdHist)
+  ) {
+    return null;
+  }
+
+  const votes = {
+    price_vs_ema20: close >= ema20 ? 1 : -1,
+    ema20_vs_ema50: ema20 >= ema50 ? 1 : -1,
+    ema50_vs_ema200: ema50 >= ema200 ? 1 : -1,
+    macd_hist: macdHist >= 0 ? 1 : -1,
+    rsi_zone: rsi14 >= 55 ? 1 : rsi14 <= 45 ? -1 : 0,
+  };
+
+  let score = Object.values(votes).reduce((sum, value) => sum + value, 0);
+  if (hasNumber(adx) && adx >= 20 && score !== 0) {
+    score += score > 0 ? 1 : -1;
+  }
+
+  const minScore = options.observationMinScore ?? DEFAULT_SIGNAL_OPTIONS.observationMinScore;
+  if (Math.abs(score) < minScore) return null;
+
+  const direction = directionScoreLabel(score);
+
+  return {
+    strategy: `OBS_BIAS_${direction}`,
+    direction,
+    signalType: "OBSERVATION",
+    conditions: {
+      enough_directional_score: Math.abs(score) >= minScore,
+      price_above_ema20: close >= ema20,
+      ema20_above_ema50: ema20 >= ema50,
+      ema50_above_ema200: ema50 >= ema200,
+      macd_positive: macdHist >= 0,
+      rsi_bullish: rsi14 >= 55,
+      rsi_bearish: rsi14 <= 45,
+      adx_trending: hasNumber(adx) ? adx >= 20 : null,
+    },
+    snapshot: {
+      close,
+      ema20,
+      ema50,
+      ema200,
+      rsi14,
+      macdHist,
+      adx,
+      marketState,
+      observationScore: score,
+      observationVotes: votes,
+    },
+  };
 }
 
 // 輔助：計算最近 N 根的平均成交量。
@@ -169,6 +241,7 @@ function buildSignal(result, kline, options, quality) {
     openTime: kline.openTime,
     symbol: options.symbol,
     entryPrice: kline.close,
+    signalType: result.signalType || "TRADE",
     ...result,
     quality,
     verifiedAt: null,
@@ -234,6 +307,17 @@ function generateSignals(klines, options = {}) {
       signals.push(buildSignal(result, kline, mergedOptions, quality));
       lastSignalIndex.set(signalKey, i);
     }
+
+    if (mergedOptions.includeObservationSignals) {
+      const observation = strategyObservationBias(kline, i, klines, mergedOptions);
+      if (observation) {
+        signals.push(buildSignal(observation, kline, mergedOptions, {
+          signalType: "OBSERVATION",
+          observationMinScore: mergedOptions.observationMinScore,
+          observationScore: observation.snapshot.observationScore,
+        }));
+      }
+    }
   }
 
   return signals;
@@ -241,6 +325,7 @@ function generateSignals(klines, options = {}) {
 
 module.exports = {
   generateSignals,
+  strategyObservationBias,
   strategyTrendLong,
   strategyOversoldBounce,
   strategyTrendShort,

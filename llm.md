@@ -20,7 +20,7 @@
 
 ---
 
-## 二、目前開發進度（截至 2026-06-03）
+## 二、目前開發進度（截至 2026-06-05）
 
 ### ✅ 已完成
 
@@ -28,19 +28,21 @@
 |---|---|---|
 | 6 | `binanceService.js` | 抓取多時間框架 K 線（1h/4h/1d），300 根，OHLCV 全部轉 Float |
 | 7 | `indicatorService.js` | EMA20/50/200、RSI14、MACD、ATR14、ADX14、Bollinger Bands、市場狀態分類 |
-| 8 | `signalService.js` | 三個規則型策略：TREND_LONG / TREND_SHORT / OVERSOLD_BOUNCE |
+| 8 | `signalService.js` | 規則型策略：TREND_LONG / TREND_SHORT / OVERSOLD_BOUNCE，另有 OBS_BIAS_LONG / OBS_BIAS_SHORT 觀察型預測 |
 | 9 | `verifyService.js` | 延遲驗證：SL=1.5ATR、TP1/2/3=1.5/3/4.5ATR，計算 R 倍數、MFE、MAE |
 | 10 | `dashboardServer.js` + `index.html` | 純 Node http 伺服器，提供 API；HTML Dashboard 顯示圖表與訊號績效 |
 | 11 | `cronJob.js` + `pipelineService.js` | 每小時自動執行抓資料、計算指標、產生訊號、延遲驗證與存檔 |
 | 11.5 | `signalService.js` | 訊號品質控管：trend transition filter + cooldown，避免同一段趨勢重複出訊號 |
-| 12 | `symbols.js` + pipeline/API | 多幣種支援 BTCUSDT / ETHUSDT / DOGEUSDT，資料檔採 `{symbol.toLowerCase()}_{tf}.json` |
+| 12 | `symbols.js` + pipeline/API | 多幣種支援 BTCUSDT / ETHUSDT / SOLUSDT，資料檔採 `{symbol.toLowerCase()}_{tf}.json` |
+| 13 | `llmService.js` + report script | OpenAI / Groq LLM 整合，支援訊號解釋與每日報告 |
+| 13.5 | `signalService.js` + `verifyService.js` | OBS 觀察型方向預測與 PENDING_* 驗證，增加看盤輔助樣本 |
 
 ### ⏳ 尚未完成
 
 | Step | 內容 | 優先順序 |
 |---|---|---|
-| 13 | LLM 整合 — 訊號解釋 / 每日報告 | 🟡 中 |
-| 14 | PostgreSQL 取代 JSON | 🟢 低（MVP 後期） |
+| 14 | PostgreSQL 取代 JSON | 🟡 中 |
+| 15 | meme / 小幣專用策略 | 🟢 低（資料累積後） |
 
 ---
 
@@ -56,16 +58,20 @@ chronos/
 │       │   ├── fetchBTC.js         # 抓資料 + 計算指標 + 存檔
 │       │   ├── testSignals.js      # 驗證訊號邏輯（本地，不需網路）
 │       │   ├── runVerification.js  # 執行延遲驗證，存 {symbol}_1h_verified.json
+│       │   ├── runPipelineOnce.js  # 單次完整 pipeline
+│       │   ├── generateDailyReport.js # 產生每日策略報告
 │       │   ├── dashboardServer.js  # HTTP API Server（port 3001）
 │       │   └── cronJob.js          # 定時執行多幣種 pipeline
 │       ├── services/
 │       │   ├── binanceService.js   # Binance API 封裝（fetchKlines, fetchMultiTimeframe）
 │       │   ├── indicatorService.js # 技術指標計算（純手寫，無外部依賴）
 │       │   ├── signalService.js    # 規則型訊號產生器
+│       │   ├── llmService.js       # OpenAI / Groq LLM 封裝
 │       │   ├── verifyService.js    # 延遲驗證邏輯（calcLevels, verifySignal, summarize）
 │       │   └── pipelineService.js  # fetch → indicators → signals → verify → saveJson
 │       └── utils/
 │           ├── saveJson.js         # JSON 存檔工具（路徑：../../../data）
+│           ├── signalHistory.js    # 歷史訊號 upsert，避免重複累積
 │           └── symbols.js          # 多幣種清單、symbol 正規化、資料檔命名工具
 ├── data/
 │   ├── btcusdt_1h.json             # BTCUSDT 300 根 1h K 線 + 指標
@@ -73,7 +79,9 @@ chronos/
 │   ├── btcusdt_1d.json             # BTCUSDT 200 根 1d K 線 + 指標
 │   ├── btcusdt_1h_verified.json    # BTCUSDT 驗證結果（含 R 倍數、MFE、MAE）
 │   ├── ethusdt_*.json              # ETHUSDT 多時間框架與驗證結果
-│   ├── dogeusdt_*.json             # DOGEUSDT 多時間框架與驗證結果
+│   ├── solusdt_*.json              # SOLUSDT 多時間框架與驗證結果
+│   ├── *_1h_history.json           # 累積歷史訊號，依 id upsert
+│   ├── *_daily_report.md           # 每日 LLM / fallback 報告（不進版控）
 │   └── btc_*.json                  # 舊 BTC 檔名 fallback，保留過渡用
 ├── docs/
 ├── llm.md                          # 本文件
@@ -89,7 +97,7 @@ chronos/
 原因：方便理解邏輯、無版本依賴問題、適合未來移植到其他語言。
 
 ### 2. 為什麼 SL/TP 用 ATR 倍數而非固定點數？
-不同幣種波動率差距大（BTC ATR ≈ 500，DOGE ATR ≈ 0.003）。
+不同幣種波動率差距大（BTC、ETH、SOL 的 ATR 絕對值不同）。
 用 ATR 倍數才能讓跨幣種的 R 倍數具有可比性。
 - SL = 1.5 × ATR14
 - TP1 = 1.5 × ATR（RR 1:1）
@@ -115,6 +123,11 @@ chronos/
 目前 `generateSignals()` 加入兩層控管：
 - `cooldownBars = 6`：同策略同方向至少間隔 6 根 K 才能再次出訊號
 - `requireTrendTransition = true`：TREND_LONG / TREND_SHORT 只在條件剛從不成立變成立時進場
+
+### 7. 為什麼新增 OBS 觀察型預測？
+Chronos 的主要用途是輔助看盤與累積可驗證樣本，嚴格交易訊號太少時不利於觀察策略行為。
+因此新增 `OBS_BIAS_LONG / OBS_BIAS_SHORT`，每根收盤 K 會根據 EMA、RSI、MACD、ADX 做方向投票。
+OBS 訊號的 `signalType = "OBSERVATION"`，用途是看盤輔助與資料累積，不等同正式交易策略。
 
 ---
 
@@ -149,6 +162,24 @@ chronos/
   前一根為陰線（在跌勢中超賣）
 ```
 
+### OBS_BIAS_LONG / OBS_BIAS_SHORT（觀察型方向預測）
+```
+用途：
+  每根 1H 收盤 K 嘗試給出方向判斷，增加看盤輔助樣本
+
+投票來源：
+  收盤價 vs EMA20
+  EMA20 vs EMA50
+  EMA50 vs EMA200
+  MACD Histogram 正負
+  RSI 多空區間
+  ADX >= 20 時加強既有方向
+
+預設：
+  observationMinScore = 2
+  signalType = OBSERVATION
+```
+
 ### 訊號品質控管
 ```
 預設：
@@ -158,6 +189,7 @@ chronos/
 行為：
   同策略同方向訊號至少間隔 6 根 K
   TREND_LONG / TREND_SHORT 只在條件剛成立時觸發
+  OBS_BIAS_* 不套用 transition filter，目標是每根收盤 K 累積觀察樣本
   signal.quality 會記錄 cooldownBars、barsSinceLastSignal、transitionEntry
 ```
 
@@ -172,6 +204,7 @@ chronos/
   "openTime": 1748527200000,
   "symbol": "BTCUSDT",
   "entryPrice": 75274.58,
+  "signalType": "TRADE",
   "strategy": "TREND_SHORT",
   "direction": "SHORT",
   "conditions": { "ema_alignment": true, ... },
@@ -186,6 +219,8 @@ chronos/
     "exitPrice": 73514.8,
     "exitReason": "TP3",
     "exitBar": 7,
+    "checkedBars": 7,
+    "isComplete": true,
     "rMultiple": 3.0,
     "pnlPct": 2.338,
     "tp1Hit": true,
@@ -199,6 +234,9 @@ chronos/
 }
 ```
 
+近期訊號若後續 K 線尚未滿 `verifyBars`（預設 24 根），會標記為 `PENDING_PROFIT` 或 `PENDING_LOSS`。
+Pending 代表目前方向暫時有利或不利，但不列入正式勝率與平均 R。
+
 ---
 
 ## 七、Dashboard API
@@ -207,22 +245,27 @@ chronos/
 
 | Endpoint | 說明 |
 |---|---|
-| `GET /api/signals` | `btc_1h_verified.json` 全部訊號 |
-| `GET /api/klines` | `btc_1h.json`（只回傳 EMA200 有值的部分） |
-| `GET /api/summary` | 各策略勝率、平均 R 統計 |
+| `GET /api/symbols` | 目前支援幣種與資料檔狀態 |
+| `GET /api/signals?symbol=BTCUSDT` | 指定幣種的 `{symbol}_1h_verified.json` 全部訊號 |
+| `GET /api/klines?symbol=BTCUSDT` | 指定幣種 1h K 線（只回傳 EMA200 有值的部分） |
+| `GET /api/summary?symbol=BTCUSDT` | 指定幣種各策略勝率、平均 R 統計 |
 
 ---
 
-## 八、目前樣本統計（2026-06-03）
+## 八、目前樣本統計（2026-06-05）
 
 | 幣種 | 策略 | 樣本數 | 勝率 | 平均 R |
 |---|---|---|---|---|
-| BTCUSDT | TREND_SHORT | 4 | 25% | 0 |
-| ETHUSDT | TREND_SHORT | 6 | 66.7% | +0.519 |
-| DOGEUSDT | — | 0 | — | — |
+| BTCUSDT | OBS_BIAS_SHORT | 82（完成）+ 16 pending | 79.3% | +2.105 |
+| BTCUSDT | TREND_SHORT | 4（完成）+ 1 pending | 50% | +1 |
+| BTCUSDT | OBS_BIAS_LONG | 1 | 0% | -1 |
+| ETHUSDT | OBS_BIAS_SHORT | 70（完成）+ 19 pending | 74.3% | +1.455 |
+| ETHUSDT | TREND_SHORT | 8（完成）+ 1 pending | 62.5% | +1.155 |
+| SOLUSDT | OBS_BIAS_SHORT | 74（完成）+ 19 pending | 75.7% | +1.871 |
+| SOLUSDT | TREND_SHORT | 7（完成）+ 2 pending | 71.4% | +1.719 |
 
-⚠️ 樣本仍然過少，統計只能用來檢查流程是否正常，不能視為策略穩定結論。需累積 50+ 筆以上才比較有參考價值。
-目前 BTC / ETH 主要觸發 TREND_SHORT，DOGEUSDT 資料完整但尚未觸發訊號。
+⚠️ OBS_BIAS 是看盤輔助與樣本累積用，不能和正式交易策略用同一標準解讀。
+Pending 不列入正式勝率與平均 R；它只表示目前後續走勢暫時有利或不利。
 
 ---
 
@@ -232,8 +275,9 @@ chronos/
 2. **指標 null 處理**：用 `== null`（同時涵蓋 undefined），不要用 `=== null`
 3. **資料型別**：Binance API 回傳 OHLCV 是 String，存檔前必須 `parseFloat()`
 4. **EMA200 需要 200 根暖機**：抓資料時 limit 設 300（1h）才有足夠的有效根數
-5. **新增幣種**：已支援 `BTCUSDT`、`ETHUSDT`、`DOGEUSDT`；新增幣種時請透過 `symbols.js` / `CHRONOS_SYMBOLS` 管理，避免重新硬寫
+5. **新增幣種**：預設支援 `BTCUSDT`、`ETHUSDT`、`SOLUSDT`；新增幣種時請透過 `symbols.js` / `CHRONOS_SYMBOLS` 管理，避免重新硬寫
 6. **不要修改 data/ 下的 JSON**：這些是系統運行產出，應由腳本管理，不手動編輯
+7. **DOGEUSDT 暫時移出預設清單**：meme / 小幣波動結構不同，待專用策略完成後再納入主要觀察
 
 ---
 
@@ -256,13 +300,13 @@ chronos/
 ### Step 12（已完成）
 **多幣種擴展**
 - 將 symbol 從硬寫改為參數
-- 支援：BTCUSDT、ETHUSDT、DOGEUSDT
+- 支援：BTCUSDT、ETHUSDT、SOLUSDT
 - 資料檔命名規則：`{symbol.toLowerCase()}_{tf}.json`
 - 新增：`src/utils/symbols.js`
 - Dashboard API 支援 `?symbol=BTCUSDT`
 - BTC 舊檔 `btc_*.json` 保留 fallback，方便過渡
 
-### Step 13（下一個要做的）
+### Step 13（已完成）
 **LLM 整合**
 - 每個訊號觸發時呼叫 OpenAI API 或 Groq API 生成自然語言解釋
 - 每日生成策略績效報告
@@ -273,7 +317,19 @@ chronos/
 - Groq 請使用 `GROQ_API_KEY`
 - Provider 可用 `CHRONOS_LLM_PROVIDER=openai` 或 `groq` 切換；不設定時自動依可用金鑰判斷
 
-### Step 14
+### Step 13.5（已完成）
+**OBS 觀察型方向預測**
+- 新增 `OBS_BIAS_LONG / OBS_BIAS_SHORT`
+- 每根 1H 收盤 K 依 EMA、RSI、MACD、ADX 做方向投票
+- 未滿 24 根後續 K 的驗證結果標記為 `PENDING_PROFIT / PENDING_LOSS`
+- Pending 不列入正式勝率與平均 R
+
+### Step 14（下一個要做的）
 **PostgreSQL 遷移**
 - 替換 JSON 存檔
 - 支援複雜查詢（跨幣種、跨時間框架統計）
+
+### Step 15
+**meme / 小幣專用策略**
+- DOGEUSDT 暫不列入預設觀察清單
+- 未來針對 meme / 小幣建立高波動、情緒盤、突破回落等專用策略後再加入

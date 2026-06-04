@@ -33,7 +33,7 @@ jobs:
       - name: Run single pipeline
         working-directory: backend
         env:
-          CHRONOS_SYMBOLS: BTCUSDT,ETHUSDT,DOGEUSDT
+          CHRONOS_SYMBOLS: BTCUSDT,ETHUSDT,SOLUSDT
         run: npm run pipeline
 
       - name: Commit updated data

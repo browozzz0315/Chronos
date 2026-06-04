@@ -14,7 +14,9 @@ Chronos 是一個小型研究型 Side Project，目標是建立一套「可記�
 - **計算技術指標**：EMA20/50/200、RSI14、MACD、ATR、ADX、Bollinger Bands
 - **市場狀態分類**：趨勢盤 / 震盪盤 / 高低波動，確保策略在正確環境下統計
 - **規則型訊號產生**：三個策略（趨勢順勢做多/空、超賣反彈）
+- **觀察型方向預測**：每根 1H 收盤 K 產生 OBS_BIAS_LONG / OBS_BIAS_SHORT，累積看盤輔助樣本
 - **延遲驗證系統**：自動計算每筆訊號的 R 倍數、MFE、MAE、出場原因
+- **LLM 解釋與報告**：支援 OpenAI / Groq，為訊號生成自然語言解釋與每日報告
 - **Dashboard**：視覺化策略績效、訊號列表、K 線圖
 
 ---
@@ -37,28 +39,31 @@ npm install
 ### 執行流程
 
 ```bash
-# 1. 抓取資料並計算指標（產生 data/btc_*.json）
-node src/scripts/fetchBTC.js
+# 1. 單次執行完整 pipeline（BTC / ETH / SOL）
+npm run pipeline
 
-# 2. 執行延遲驗證（產生 data/btc_1h_verified.json）
-node src/scripts/runVerification.js
+# 2. 只針對單一幣種執行延遲驗證
+npm run verify -- BTCUSDT
 
 # 3. 啟動 Dashboard
-node src/scripts/dashboardServer.js
+npm run dashboard
 # → 開啟瀏覽器：http://localhost:3001
 
+# 4. 本地 cron，每小時第 2 分鐘自動跑 pipeline
+npm run cron
+
 # 驗證訊號邏輯（不需網路，讀本地資料）
-node src/scripts/testSignals.js
+npm run test:signals -- BTCUSDT
 
 # Step 13：啟用 LLM 訊號解釋（可選）
 # ChatGPT Plus 不能直接當 API key，需另外準備 OPENAI_API_KEY
 $env:OPENAI_API_KEY="your_api_key"
-node src/scripts/runPipelineOnce.js
+npm run pipeline
 
 # 或改用 Groq
 $env:GROQ_API_KEY="your_groq_api_key"
 $env:CHRONOS_LLM_PROVIDER="groq"
-node src/scripts/generateDailyReport.js
+npm run report:daily
 ```
 
 ---
@@ -74,20 +79,28 @@ chronos/
 │       ├── scripts/
 │       │   ├── fetchBTC.js         # 抓資料入口
 │       │   ├── runVerification.js  # 執行驗證
+│       │   ├── runPipelineOnce.js  # 單次完整 pipeline
+│       │   ├── cronJob.js          # 本地排程執行 pipeline
+│       │   ├── generateDailyReport.js # 產生每日報告
 │       │   ├── testSignals.js      # 訊號邏輯測試
 │       │   └── dashboardServer.js  # HTTP Server（port 3001）
 │       ├── services/
 │       │   ├── binanceService.js   # Binance API 封裝
 │       │   ├── indicatorService.js # 技術指標計算
 │       │   ├── signalService.js    # 訊號產生策略
+│       │   ├── llmService.js       # OpenAI / Groq LLM 封裝
+│       │   ├── pipelineService.js  # 抓資料、指標、訊號、驗證、存檔
 │       │   └── verifyService.js    # 延遲驗證邏輯
 │       └── utils/
-│           └── saveJson.js         # 檔案儲存工具
+│           ├── saveJson.js         # 檔案儲存工具
+│           ├── signalHistory.js    # 歷史訊號 upsert
+│           └── symbols.js          # 多幣種設定與檔名工具
 ├── data/                           # 自動產生，勿手動編輯
-│   ├── btc_1h.json
-│   ├── btc_4h.json
-│   ├── btc_1d.json
-│   └── btc_1h_verified.json
+│   ├── btcusdt_1h.json
+│   ├── ethusdt_1h.json
+│   ├── solusdt_1h.json
+│   ├── *_1h_verified.json
+│   └── *_1h_history.json
 ├── docs/
 ├── llm.md                          # LLM 協作說明文件
 └── README.md
@@ -119,6 +132,10 @@ EMA 空頭排列 + RSI 35~55 + 收盤在 EMA20 下方 + MACD 向下
 ### OVERSOLD_BOUNCE（超賣反彈）
 RSI < 30 + 成交量放大 + 大趨勢偏多（收盤在 EMA200 上方）
 
+### OBS_BIAS_LONG / OBS_BIAS_SHORT（觀察型方向預測）
+每根 1H 收盤 K 依 EMA、RSI、MACD、ADX 做方向投票，用於看盤輔助與累積可驗證樣本。
+這類訊號的 `signalType` 為 `OBSERVATION`，不等同正式交易策略。
+
 ---
 
 ## 驗證系統
@@ -133,10 +150,12 @@ RSI < 30 + 成交量放大 + 大趨勢偏多（收盤在 EMA200 上方）
 | TP3 | 進場價 ± 4.5 × ATR | 1:3 |
 
 驗證結果記錄：
-- **outcome**：WIN_TP1 / WIN_TP2 / WIN_TP3 / LOSS / TIMEOUT_PROFIT / TIMEOUT_LOSS
+- **outcome**：WIN_TP1 / WIN_TP2 / WIN_TP3 / LOSS / TIMEOUT_PROFIT / TIMEOUT_LOSS / PENDING_PROFIT / PENDING_LOSS
 - **R 倍數**：+3 表示賺了 3R，-1 表示完整止損
 - **MFE**：Maximum Favorable Excursion（進場後最大有利波動）
 - **MAE**：Maximum Adverse Excursion（進場後最大不利波動）
+
+`PENDING_*` 代表後續 K 線尚未滿驗證視窗，僅表示目前暫時有利或不利，不列入正式勝率。
 
 ---
 
@@ -156,7 +175,8 @@ RSI < 30 + 成交量放大 + 大趨勢偏多（收盤在 EMA200 上方）
 ## 注意事項
 
 - 樣本數 < 50 筆時，勝率統計不具參考意義
-- 目前支援 BTCUSDT、ETHUSDT、DOGEUSDT；多幣種策略參數尚未個別最佳化
+- 目前預設支援 BTCUSDT、ETHUSDT、SOLUSDT；多幣種策略參數尚未個別最佳化
+- DOGEUSDT 暫時移出預設清單，之後會等 meme / 小幣專用策略完成再加入觀察
 - 資料來源為 Binance 公開 API（與 BingX 有微小價差）
 - 本工具僅供研究用途，不構成投資建議
 
@@ -171,8 +191,9 @@ RSI < 30 + 成交量放大 + 大趨勢偏多（收盤在 EMA200 上方）
 - [x] Step 10：Dashboard
 - [x] Step 11：Cron Job 自動定時執行
 - [x] Step 11.5：訊號品質控管（transition filter + cooldown）
-- [x] Step 12：多幣種擴展（ETH、DOGE）
-- [ ] Step 13：LLM 整合（訊號解釋 / 每日報告）
+- [x] Step 12：多幣種擴展（ETH、SOL）
+- [x] Step 13：LLM 整合（訊號解釋 / 每日報告）
+- [x] Step 13.5：OBS 觀察型方向預測與 pending 驗證
 - [ ] Step 14：PostgreSQL 資料庫遷移
 
 ---

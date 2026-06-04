@@ -1,4 +1,4 @@
-const DEFAULT_SYMBOLS = ["BTCUSDT", "ETHUSDT", "DOGEUSDT"];
+const DEFAULT_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT"];
 
 function normalizeSymbol(symbol) {
   return String(symbol || "").trim().toUpperCase();

@@ -72,6 +72,7 @@ function verifySignal(signal, klines, maxBars = 24) {
   let exitReason   = null;
 
   const checkBars = Math.min(maxBars, klines.length - entryIndex - 1);
+  const isCompleteWindow = checkBars >= maxBars;
 
   for (let i = 1; i <= checkBars; i++) {
     const bar = klines[entryIndex + i];
@@ -128,7 +129,8 @@ function verifySignal(signal, klines, maxBars = 24) {
   if (!slHit && !tp3Hit) {
     const lastBar = klines[entryIndex + checkBars];
     exitPrice  = lastBar?.close ?? entryPrice;
-    exitReason = "TIMEOUT";
+    exitBar = checkBars;
+    exitReason = isCompleteWindow ? "TIMEOUT" : "PENDING";
   }
 
   // 計算結果
@@ -143,6 +145,8 @@ function verifySignal(signal, klines, maxBars = 24) {
   let outcome;
   if (slHit)              outcome = "LOSS";
   else if (tp3Hit)        outcome = "WIN_TP3";
+  else if (!isCompleteWindow && priceDiff > 0) outcome = "PENDING_PROFIT";
+  else if (!isCompleteWindow) outcome = "PENDING_LOSS";
   else if (tp2Hit)        outcome = "WIN_TP2";
   else if (tp1Hit)        outcome = "WIN_TP1";
   else if (priceDiff > 0) outcome = "TIMEOUT_PROFIT";
@@ -153,6 +157,8 @@ function verifySignal(signal, klines, maxBars = 24) {
     exitPrice,
     exitReason,
     exitBar,         // 第幾根後出場
+    checkedBars: checkBars,
+    isComplete: isCompleteWindow || slHit || tp3Hit,
     rMultiple,       // +2.1 代表賺了 2.1R，-1 代表完整止損
     pnlPct,          // 不含槓桿的百分比
     tp1Hit, tp2Hit, tp3Hit, slHit,
@@ -184,12 +190,17 @@ function summarize(verifiedSignals) {
 
     if (!byStrategy[strategy]) {
       byStrategy[strategy] = {
-        total: 0, wins: 0, losses: 0, timeouts: 0,
+        total: 0, wins: 0, losses: 0, timeouts: 0, pending: 0,
         totalR: 0, avgR: 0, winRate: 0,
       };
     }
 
     const s = byStrategy[strategy];
+    if (v.outcome && v.outcome.startsWith("PENDING")) {
+      s.pending++;
+      continue;
+    }
+
     s.total++;
     s.totalR += v.rMultiple;
 
