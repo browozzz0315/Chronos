@@ -4,7 +4,12 @@ const { generateSignals } = require("./signalService");
 const { verifyAll, summarize } = require("./verifyService");
 const { saveJson } = require("../utils/saveJson");
 const { enrichSignalsWithExplanations, isLlmEnabled } = require("./llmService");
-const { loadHistory, mergeSignalsWithHistory, upsertSignalHistory } = require("../utils/signalHistory");
+const {
+  filterHistoryByMaxOpenTime,
+  loadHistory,
+  mergeSignalsWithHistory,
+  upsertSignalHistory,
+} = require("../utils/signalHistory");
 const { dataFilename, normalizeSymbol } = require("../utils/symbols");
 
 async function runPipeline(symbol = "BTCUSDT", options = {}) {
@@ -23,7 +28,8 @@ async function runPipeline(symbol = "BTCUSDT", options = {}) {
   const signals = generateSignals(baseKlines, { symbol: normalizedSymbol });
   const verifiedFilename = dataFilename(normalizedSymbol, "1h_verified");
   const historyFilename = dataFilename(normalizedSymbol, "1h_history");
-  const history = loadHistory(historyFilename);
+  const maxOpenTime = latestBaseKline?.openTime;
+  const history = filterHistoryByMaxOpenTime(loadHistory(historyFilename), maxOpenTime);
   const verified = mergeSignalsWithHistory(
     verifyAll(signals, baseKlines, verifyBars),
     history
@@ -33,7 +39,7 @@ async function runPipeline(symbol = "BTCUSDT", options = {}) {
   const summary = summarize(finalVerified);
 
   await saveJson(verifiedFilename, finalVerified);
-  const historyStats = await upsertSignalHistory(historyFilename, finalVerified);
+  const historyStats = await upsertSignalHistory(historyFilename, finalVerified, { maxOpenTime });
 
   return {
     symbol: normalizedSymbol,

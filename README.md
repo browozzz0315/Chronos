@@ -80,6 +80,7 @@ Cron / 時間顯示：
 - 預設時區為 `Asia/Taipei`，可用 `CHRONOS_CRON_TIMEZONE` 覆蓋
 - `npm run cron` 啟動後預設會先跑一次，再等待下一個排程；若只想等待排程可設 `CHRONOS_RUN_ON_STARTUP=false`
 - Binance API 會回傳正在形成中的最新 K 線，系統會自動排除尚未收盤的 K，只用已收盤資料產生訊號
+- 若舊版曾把未收盤 K 的訊號寫進 history，下一次 pipeline / cron 會自動移除超過最新已收盤 K 的歷史訊號
 - Dashboard 時間以 `Asia/Taipei` 顯示；JSON 內 timestamp 仍是毫秒時間戳，可跨時區穩定驗證
 
 ---

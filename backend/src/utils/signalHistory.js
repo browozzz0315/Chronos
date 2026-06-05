@@ -20,6 +20,11 @@ function indexSignalsById(signals) {
   return new Map((signals || []).map((signal) => [signal.id, signal]));
 }
 
+function filterHistoryByMaxOpenTime(history, maxOpenTime) {
+  if (maxOpenTime == null) return history || [];
+  return (history || []).filter((signal) => signal.openTime <= maxOpenTime);
+}
+
 /**
  * Reuse persisted fields from history so repeated verification runs do not
  * erase previously generated LLM explanations or other derived metadata.
@@ -46,8 +51,9 @@ function mergeSignalsWithHistory(signals, history) {
  * - New signal id: append
  * - Final output: sorted by openTime ascending
  */
-async function upsertSignalHistory(filename, signals) {
-  const history = loadHistory(filename);
+async function upsertSignalHistory(filename, signals, options = {}) {
+  const originalHistory = loadHistory(filename);
+  const history = filterHistoryByMaxOpenTime(originalHistory, options.maxOpenTime);
   const merged = new Map(history.map((signal) => [signal.id, signal]));
 
   for (const signal of signals) {
@@ -62,7 +68,8 @@ async function upsertSignalHistory(filename, signals) {
   await saveJson(filename, nextHistory);
 
   return {
-    previousCount: history.length,
+    previousCount: originalHistory.length,
+    pruned: originalHistory.length - history.length,
     nextCount: nextHistory.length,
     inserted: Math.max(nextHistory.length - history.length, 0),
   };
@@ -70,6 +77,7 @@ async function upsertSignalHistory(filename, signals) {
 
 module.exports = {
   loadHistory,
+  filterHistoryByMaxOpenTime,
   mergeSignalsWithHistory,
   upsertSignalHistory,
 };

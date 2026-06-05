@@ -39,7 +39,7 @@ async function runCycle(trigger = "manual") {
         `[cron] ${result.symbol}: signals=${result.signals.length}, ` +
         `strategies=${strategyNames.length ? strategyNames.join(",") : "none"}, ` +
         `latestClosed1h=${formatMs(result.dataWindow?.latestCloseTime)}, ` +
-        `history=${result.historyStats.nextCount}, ` +
+        `history=${result.historyStats.nextCount}, pruned=${result.historyStats.pruned || 0}, ` +
         `llm=${result.llm.enabled ? `${result.llm.provider || "configured"} selected=${result.llm.selected} +${result.llm.generated}${result.llm.rateLimited ? " rate_limited" : ""}` : "disabled"}`
       );
     }
