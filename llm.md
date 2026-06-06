@@ -1,341 +1,748 @@
-# Chronos — LLM 協作文件
+# Chronos LLM Implementation Notes
 
-> 本文件專為 LLM（OpenAI / Groq 等）提供專案背景與協作脈絡。
-> 每次對話開始前請先閱讀此文件，以了解現況與規範。
-
----
-
-## 一、專案概述
-
-**名稱**：Chronos
-**類型**：AI 輔助加密貨幣研究與策略驗證平台（Side Project）
-**目的**：建立「可記錄、可驗證、可持續優化」的系統化看盤流程，非自動交易機器人。
-
-### 核心理念
-
-- 不預測價格，而是**驗證策略是否有統計優勢**
-- 所有訊號需記錄「觸發當下的完整指標快照」，事後才能有意義地驗證
-- 市場狀態分類（趨勢盤 vs 震盪盤）是驗證的前提，否則勝率統計無效
-- MVP 嚴格控制範圍，不做真實下單、不做複雜 ML
+This file is the implementation reference for future LLM / agent work on Chronos.
+It intentionally uses English only to avoid terminal encoding issues, while keeping
+the original documentation structure and purpose.
 
 ---
 
-## 二、目前開發進度（截至 2026-06-05）
+## 1. Project Goal
 
-### ✅ 已完成
+Chronos is a market-analysis side project for crypto signals.
 
-| Step | 模組 | 說明 |
+Core principles:
+- Do not predict exact future prices.
+- Verify whether rule-based strategies have statistical edge.
+- Every signal must keep the full indicator snapshot at trigger time.
+- Market state classification is required before win-rate interpretation.
+- MVP scope is strict: no live trading, no complex ML, no exchange order execution.
+
+Current target usage:
+- Assist chart-reading decisions.
+- Accumulate verified strategy samples over time.
+- Compare strategy behavior across symbols and market states.
+- Use LLM only for explanation and reporting, not for generating trade entries.
+
+---
+
+## 2. Current Development Status (as of 2026-06-06)
+
+### Completed
+
+| Step | Module | Status |
 |---|---|---|
-| 6 | `binanceService.js` | 抓取多時間框架 K 線（1h/4h/1d），300 根，OHLCV 全部轉 Float |
-| 7 | `indicatorService.js` | EMA20/50/200、RSI14、MACD、ATR14、ADX14、Bollinger Bands、市場狀態分類 |
-| 8 | `signalService.js` | 規則型策略：TREND_LONG / TREND_SHORT / OVERSOLD_BOUNCE，另有 OBS_BIAS_LONG / OBS_BIAS_SHORT 觀察型預測(2026-06-05新增) |
-| 9 | `verifyService.js` | 延遲驗證：SL=1.5ATR、TP1/2/3=1.5/3/4.5ATR，計算 R 倍數、MFE、MAE |
-| 10 | `dashboardServer.js` + `index.html` | 純 Node http 伺服器，提供 API；HTML Dashboard 顯示圖表與訊號績效 |
-| 11 | `cronJob.js` + `pipelineService.js` | 每小時自動執行抓資料、計算指標、產生訊號、延遲驗證與存檔 |
-| 11.5 | `signalService.js` | 訊號品質控管：trend transition filter + cooldown，避免同一段趨勢重複出訊號 |
-| 12 | `symbols.js` + pipeline/API | 多幣種支援 BTCUSDT / ETHUSDT / SOLUSDT，資料檔採 `{symbol.toLowerCase()}_{tf}.json` |
-| 13 | `llmService.js` + report script | OpenAI / Groq LLM 整合，支援訊號解釋與每日報告 |
-| 13.5 | `signalService.js` + `verifyService.js` | OBS 觀察型方向預測與 PENDING_* 驗證，增加看盤輔助樣本 |
+| 6 | `binanceService.js` | Multi-timeframe Binance OHLCV fetch for 1h / 4h / 1d. Numeric OHLCV conversion is required before saving. Closed-candle filtering avoids using unfinished Binance candles. |
+| 7 | `Indicatorservice.js` | Hand-written indicators: EMA20/50/200, RSI14, MACD, ATR14, ADX14, Bollinger Bands, market-state classification. |
+| 8 | `signalService.js` | Rule-based signal generation. Current formal strategies: `TREND_LONG`, `TREND_SHORT`, `PULLBACK_LONG`, `PULLBACK_SHORT`, `OVERSOLD_BOUNCE`. Helper signals: `TREND_*_CONTINUATION`, `OBS_BIAS_LONG`, `OBS_BIAS_SHORT`. |
+| 9 | `verifyService.js` | Delayed verification with ATR-based SL/TP, R multiple, PnL %, MFE, MAE, pending outcomes. |
+| 10 | `dashboardServer.js` + `index.html` | Local HTTP dashboard on port 3001 with API endpoints, multi-symbol selector, candlestick overlay, signal markers, summary stats, detail panel, LLM explanation display, light/dark theme. |
+| 11 | `cronJob.js` + `pipelineService.js` | Scheduled pipeline. Default cron: `2 * * * *`, timezone `Asia/Taipei`. Includes startup run, overlap protection, closed-candle logging. |
+| 11.5 | signal quality controls | Cooldown, transition filter for strict trend entries, continuation markers, history pruning for stale future/unclosed samples. |
+| 12 | multi-symbol support | Default symbols: `BTCUSDT`, `ETHUSDT`, `SOLUSDT`. File naming: `{symbol.toLowerCase()}_{suffix}.json`. BTC legacy fallback is still supported for old `btc_*.json` files. |
+| 13 | LLM integration | OpenAI / Groq support for signal explanations and daily reports. Batch explanation is enabled by default to reduce 429 risk. |
+| 13.5 | observation signals | `OBS_BIAS_LONG / OBS_BIAS_SHORT` create closed-candle directional samples for watchlist and statistics. |
+| 13.6 | pullback strategies | `PULLBACK_LONG / PULLBACK_SHORT` add formal second-entry trend pullback signals. |
 
-### ⏳ 尚未完成
+### Not Completed
 
-| Step | 內容 | 優先順序 |
+| Step | Scope | Priority |
 |---|---|---|
-| 14 | PostgreSQL 取代 JSON | 🟡 中 |
-| 15 | meme / 小幣專用策略 | 🟢 低（資料累積後） |
+| 14 | PostgreSQL migration to replace JSON persistence and support cross-symbol queries. | Medium |
+| 15 | Dedicated meme / small-cap strategies if DOGE or similar symbols are reintroduced. | Low / later |
+| 16 | Optional cleanup of remaining mojibake prompt strings in source files. | Low, non-business-logic |
 
 ---
 
-## 三、專案目錄結構
+## 3. Project Structure
 
-```
+```text
 chronos/
-├── backend/
-│   ├── public/
-│   │   └── index.html              # Dashboard 前端
-│   └── src/
-│       ├── scripts/
-│       │   ├── fetchBTC.js         # 抓資料 + 計算指標 + 存檔
-│       │   ├── testSignals.js      # 驗證訊號邏輯（本地，不需網路）
-│       │   ├── runVerification.js  # 執行延遲驗證，存 {symbol}_1h_verified.json
-│       │   ├── runPipelineOnce.js  # 單次完整 pipeline
-│       │   ├── generateDailyReport.js # 產生每日策略報告
-│       │   ├── dashboardServer.js  # HTTP API Server（port 3001）
-│       │   └── cronJob.js          # 定時執行多幣種 pipeline
-│       ├── services/
-│       │   ├── binanceService.js   # Binance API 封裝（fetchKlines, fetchMultiTimeframe）
-│       │   ├── indicatorService.js # 技術指標計算（純手寫，無外部依賴）
-│       │   ├── signalService.js    # 規則型訊號產生器
-│       │   ├── llmService.js       # OpenAI / Groq LLM 封裝
-│       │   ├── verifyService.js    # 延遲驗證邏輯（calcLevels, verifySignal, summarize）
-│       │   └── pipelineService.js  # fetch → indicators → signals → verify → saveJson
-│       └── utils/
-│           ├── saveJson.js         # JSON 存檔工具（路徑：../../../data）
-│           ├── signalHistory.js    # 歷史訊號 upsert，避免重複累積
-│           └── symbols.js          # 多幣種清單、symbol 正規化、資料檔命名工具
-├── data/
-│   ├── btcusdt_1h.json             # BTCUSDT 300 根 1h K 線 + 指標
-│   ├── btcusdt_4h.json             # BTCUSDT 200 根 4h K 線 + 指標
-│   ├── btcusdt_1d.json             # BTCUSDT 200 根 1d K 線 + 指標
-│   ├── btcusdt_1h_verified.json    # BTCUSDT 驗證結果（含 R 倍數、MFE、MAE）
-│   ├── ethusdt_*.json              # ETHUSDT 多時間框架與驗證結果
-│   ├── solusdt_*.json              # SOLUSDT 多時間框架與驗證結果
-│   ├── *_1h_history.json           # 累積歷史訊號，依 id upsert
-│   ├── *_daily_report.md           # 每日 LLM / fallback 報告（不進版控）
-│   └── btc_*.json                  # 舊 BTC 檔名 fallback，保留過渡用
-├── docs/
-├── llm.md                          # 本文件
-└── README.md                       # 使用者說明
+|-- backend/
+|   |-- public/
+|   |   `-- index.html                  # Dashboard frontend
+|   `-- src/
+|       |-- scripts/
+|       |   |-- fetchBTC.js             # Legacy/manual fetch entry
+|       |   |-- runVerification.js      # Manual delayed verification
+|       |   |-- runPipelineOnce.js      # One-shot full pipeline
+|       |   |-- cronJob.js              # Scheduled pipeline runner
+|       |   |-- generateDailyReport.js  # LLM/local daily report generator
+|       |   |-- testSignals.js          # Local signal tests
+|       |   `-- dashboardServer.js      # HTTP dashboard server, port 3001
+|       |-- services/
+|       |   |-- binanceService.js       # Binance API wrapper
+|       |   |-- Indicatorservice.js     # Indicator calculation, filename casing is important
+|       |   |-- signalService.js        # Rule-based signal generator
+|       |   |-- verifyService.js        # Delayed verification and summary
+|       |   |-- llmService.js           # OpenAI / Groq wrapper
+|       |   `-- pipelineService.js      # fetch -> indicators -> signals -> verify -> LLM -> save
+|       `-- utils/
+|           |-- saveJson.js             # JSON save helper, writes to ../../../data
+|           |-- signalHistory.js        # Persistent signal-history upsert / merge
+|           `-- symbols.js              # Symbol normalization and data filenames
+|-- data/                               # Runtime output. Do not hand-edit generated JSON.
+|   |-- .gitkeep
+|   |-- btcusdt_1h.json
+|   |-- ethusdt_1h.json
+|   |-- solusdt_1h.json
+|   |-- *_1h_verified.json
+|   |-- *_1h_history.json
+|   `-- *_daily_report.md
+|-- docs/
+|-- README.md                          # User-facing documentation
+`-- llm.md                             # This implementation reference
 ```
 
 ---
 
-## 四、關鍵設計決策與原因
+## 4. Key Design Decisions
 
-### 1. 為什麼不用外部套件計算指標？
-`indicatorService.js` 全部純手寫（EMA、RSI、MACD、ATR、ADX、BB）。
-原因：方便理解邏輯、無版本依賴問題、適合未來移植到其他語言。
+### 1. Why are indicators hand-written?
 
-### 2. 為什麼 SL/TP 用 ATR 倍數而非固定點數？
-不同幣種波動率差距大（BTC、ETH、SOL 的 ATR 絕對值不同）。
-用 ATR 倍數才能讓跨幣種的 R 倍數具有可比性。
-- SL = 1.5 × ATR14
-- TP1 = 1.5 × ATR（RR 1:1）
-- TP2 = 3.0 × ATR（RR 1:2）
-- TP3 = 4.5 × ATR（RR 1:3）
+`Indicatorservice.js` calculates all indicators manually instead of using an
+external TA package.
 
-### 3. 為什麼市場狀態分類這麼重要？
-同一個 RSI 超賣訊號，在趨勢盤（ADX > 25）和震盪盤（ADX < 20）的行為完全不同。
-混在一起統計勝率是無效資料。`classifyMarketState()` 在每根 K 線上標記狀態，驗證時一併記錄。
+Reasons:
+- Easier to inspect and debug.
+- No dependency version drift.
+- Easier future porting to another language.
+- Indicator warm-up behavior stays explicit.
 
-### 4. 為什麼 MVP 用規則型訊號而非 ML？
-資料累積不足（< 500 筆）時，監督式 ML 會過擬合。
-先用規則型訊號累積標記資料，等 3-6 個月後再引入 XGBoost / Random Forest。
+### 2. Why use ATR-based SL/TP?
 
-### 5. 路徑規範
-所有 scripts 在 `backend/src/scripts/`，往上三層才是根目錄。
-- 讀寫 data/：`path.join(__dirname, "../../../data", filename)`
-- 引用 services：`require("../services/serviceName")`
-- 引用 utils：`require("../utils/utilName")`
+Different symbols have very different volatility.
+Fixed price-distance stops are not comparable across BTC, ETH, SOL, DOGE, etc.
 
-### 6. 為什麼加入訊號品質控管？
-原本趨勢條件連續成立時，每根 K 都會產生同方向訊號，導致樣本高度重複、績效統計失真。
-目前 `generateSignals()` 加入兩層控管：
-- `cooldownBars = 6`：同策略同方向至少間隔 6 根 K 才能再次出訊號
-- `requireTrendTransition = true`：TREND_LONG / TREND_SHORT 只在條件剛從不成立變成立時進場
+Current levels:
+- `SL = 1.5 * ATR14`
+- `TP1 = 1.5 * ATR14` (`RR 1:1`)
+- `TP2 = 3.0 * ATR14` (`RR 1:2`)
+- `TP3 = 4.5 * ATR14` (`RR 1:3`)
 
-### 7. 為什麼新增 OBS 觀察型預測？
-Chronos 的主要用途是輔助看盤與累積可驗證樣本，嚴格交易訊號太少時不利於觀察策略行為。
-因此新增 `OBS_BIAS_LONG / OBS_BIAS_SHORT`，每根收盤 K 會根據 EMA、RSI、MACD、ADX 做方向投票。
-OBS 訊號的 `signalType = "OBSERVATION"`，用途是看盤輔助與資料累積，不等同正式交易策略。
+This makes `R multiple` comparable across symbols.
 
----
+### 3. Why is market-state classification important?
 
-## 五、訊號策略說明
+The same RSI or EMA signal behaves differently in a trend market and a range market.
+Mixing all states into one win rate produces misleading statistics.
 
-### TREND_LONG（趨勢順勢做多）
-```
-條件：
-  EMA20 > EMA50 > EMA200（多頭排列）
-  RSI 在 45~65（動能健康，不追高）
-  收盤 > EMA20（在均線上方）
-  MACD Histogram > 0（動能向上）
-  ADX >= 20（有趨勢）
-```
+`classifyMarketState()` labels each candle so verification can later be grouped by
+state, such as trend, range, overbought, oversold, or transitional conditions.
 
-### TREND_SHORT（趨勢順勢做空）
-```
-條件：
-  EMA20 < EMA50 < EMA200（空頭排列）
-  RSI 在 35~55
-  收盤 < EMA20
-  MACD Histogram < 0
-  ADX >= 20
-```
+### 4. Why rule-based first instead of ML?
 
-### OVERSOLD_BOUNCE（超賣反彈做多）
-```
-條件：
-  RSI < 30（超賣）
-  成交量 > 20期均量 × 1.3（量能放大）
-  收盤 > EMA200（大趨勢仍偏多）
-  前一根為陰線（在跌勢中超賣）
-```
+The project does not yet have enough verified samples for supervised ML.
+Rule-based strategies create labeled historical samples first.
+ML can be considered only after enough data is accumulated across months.
 
-### OBS_BIAS_LONG / OBS_BIAS_SHORT（觀察型方向預測）
-```
-用途：
-  每根 1H 收盤 K 嘗試給出方向判斷，增加看盤輔助樣本
+### 5. Why JSON first?
 
-投票來源：
-  收盤價 vs EMA20
-  EMA20 vs EMA50
-  EMA50 vs EMA200
-  MACD Histogram 正負
-  RSI 多空區間
-  ADX >= 20 時加強既有方向
+JSON is sufficient for MVP speed and local inspection.
+The planned PostgreSQL migration should happen after strategy behavior is stable.
 
-預設：
-  observationMinScore = 2
-  signalType = OBSERVATION
-```
+### 6. Why closed-candle filtering?
 
-### 訊號品質控管
-```
-預設：
-  cooldownBars = 6
-  requireTrendTransition = true
+The system should generate signals only on closed candles.
+Using unfinished 1h candles would create unstable signals and duplicate predictions.
+`binanceService.js` filters Binance rows by close time before saving.
 
-行為：
-  同策略同方向訊號至少間隔 6 根 K
-  TREND_LONG / TREND_SHORT 只在條件剛成立時觸發
-  OBS_BIAS_* 不套用 transition filter，目標是每根收盤 K 累積觀察樣本
-  signal.quality 會記錄 cooldownBars、barsSinceLastSignal、transitionEntry
-```
+### 7. Why use cooldown and transition filters?
+
+Without quality controls, strict trend strategies would fire repeatedly on every
+candle during the same trend leg.
+
+Current defaults in `signalService.js`:
+- `cooldownBars = 6`
+- `requireTrendTransition = true`
+- `includeContinuationSignals = true`
+- `includeObservationSignals = true`
+- `observationMinScore = 2`
+
+Only `TREND_LONG` and `TREND_SHORT` use the false-to-true transition filter.
+Event-like setups such as `PULLBACK_*`, `OVERSOLD_BOUNCE`, continuation, and OBS
+do not use that transition filter.
+
+### 8. Why add OBS signals?
+
+Strict formal entries can be rare, which slows down sample collection.
+`OBS_BIAS_LONG / OBS_BIAS_SHORT` are watchlist-style directional observations.
+
+They are useful for:
+- More frequent market-direction samples.
+- Auxiliary dashboard context.
+- Statistical observation over time.
+
+They are not the same as formal trade strategies.
+
+### 9. Why add PULLBACK strategies?
+
+After adding OBS, formal trade signals were still too sparse.
+`PULLBACK_LONG / PULLBACK_SHORT` add second-entry opportunities when an existing
+trend pulls back to EMA20 and resumes in the trend direction.
+
+These are formal `TRADE` signals and are verified like other strategies.
+
+### 10. Why batch LLM explanations?
+
+Sending one request per signal caused rate-limit risk, especially with Groq.
+`llmService.js` defaults to batch explanation mode and sends compact signal payloads.
+
+Default LLM behavior:
+- Explain only `TRADE` signals.
+- Skip pending signals.
+- Limit explanations per run.
+- Preserve existing `llm.explanation` from signal history.
 
 ---
 
-## 六、驗證系統輸出格式
+## 5. Signal Strategy Reference
 
-每筆驗證後的訊號結構：
+### Signal Types
+
+| `signalType` | Meaning | Verification |
+|---|---|---|
+| `TRADE` | Formal strategy signal. | Included in normal verification and LLM explanations by default. |
+| `CONTINUATION` | Watchlist helper showing a strict trend setup remains valid. | Verified but should not be read as a new formal entry. |
+| `OBSERVATION` | Directional observation sample. | Verified for statistics, not a strict trade setup. |
+
+### TREND_LONG
+
+Formal trend-following long entry.
+
+Conditions:
+```text
+EMA20 > EMA50 > EMA200
+RSI14 between 45 and 65
+close > EMA20
+MACD histogram > 0
+ADX >= 20, or ADX unavailable during warm-up
+```
+
+Quality control:
+```text
+signalType = "TRADE"
+uses cooldown
+uses false-to-true transition filter
+```
+
+### TREND_SHORT
+
+Formal trend-following short entry.
+
+Conditions:
+```text
+EMA20 < EMA50 < EMA200
+RSI14 between 35 and 55
+close < EMA20
+MACD histogram < 0
+ADX >= 20, or ADX unavailable during warm-up
+```
+
+Quality control:
+```text
+signalType = "TRADE"
+uses cooldown
+uses false-to-true transition filter
+```
+
+### PULLBACK_LONG
+
+Formal bullish pullback continuation entry.
+
+Purpose:
+```text
+Capture a second-entry long when the broader EMA trend remains bullish,
+price recently tests EMA20, and then reclaims EMA20.
+```
+
+Conditions:
+```text
+current EMA20 > EMA50 > EMA200
+previous EMA20 > EMA50 > EMA200
+current low <= current EMA20, or previous low <= previous EMA20,
+  or previous close <= previous EMA20 * 1.01
+current close > current EMA20
+RSI14 between 40 and 62
+MACD histogram >= 0, or MACD histogram improves from previous candle
+ADX >= 20, or ADX unavailable during warm-up
+```
+
+Quality control:
+```text
+signalType = "TRADE"
+uses cooldown
+does not use false-to-true transition filter
+```
+
+### PULLBACK_SHORT
+
+Formal bearish pullback continuation entry.
+
+Purpose:
+```text
+Capture a second-entry short when the broader EMA trend remains bearish,
+price recently retests EMA20 from below, and then rejects under EMA20.
+```
+
+Conditions:
+```text
+current EMA20 < EMA50 < EMA200
+previous EMA20 < EMA50 < EMA200
+current high >= current EMA20, or previous high >= previous EMA20,
+  or previous close >= previous EMA20 * 0.99
+current close < current EMA20
+RSI14 between 35 and 60
+MACD histogram <= 0, or MACD histogram weakens from previous candle
+ADX >= 20, or ADX unavailable during warm-up
+```
+
+Quality control:
+```text
+signalType = "TRADE"
+uses cooldown
+does not use false-to-true transition filter
+```
+
+### OVERSOLD_BOUNCE
+
+Formal oversold rebound long entry.
+
+Conditions:
+```text
+RSI14 < 30
+current volume > 20-candle average volume * 1.3
+close > EMA200
+previous candle is bearish
+```
+
+Quality control:
+```text
+signalType = "TRADE"
+uses cooldown
+does not use false-to-true transition filter
+```
+
+### TREND_LONG_CONTINUATION / TREND_SHORT_CONTINUATION
+
+Continuation helper signal.
+
+Conditions:
+```text
+The matching TREND_LONG or TREND_SHORT setup is valid on both:
+- previous candle
+- current candle
+```
+
+Use:
+```text
+Watchlist marker only.
+Do not treat it as a separate formal entry.
+signalType = "CONTINUATION"
+```
+
+### OBS_BIAS_LONG / OBS_BIAS_SHORT
+
+Observation-style directional signal.
+
+Voting inputs:
+```text
+price vs EMA20
+EMA20 vs EMA50
+EMA50 vs EMA200
+MACD histogram sign
+RSI zone
+ADX trend bonus when ADX >= 20
+```
+
+Use:
+```text
+More frequent closed-candle observation samples.
+Not a strict trading strategy.
+signalType = "OBSERVATION"
+```
+
+---
+
+## 6. Verification System
+
+### Result Object Shape
+
+Each verified signal is expected to look like this:
+
 ```json
 {
-  "id": "TREND_SHORT_1748527200000",
-  "openTime": 1748527200000,
+  "id": "PULLBACK_SHORT_1780000000000",
+  "openTime": 1780000000000,
   "symbol": "BTCUSDT",
-  "entryPrice": 75274.58,
+  "entryPrice": 60951.64,
   "signalType": "TRADE",
-  "strategy": "TREND_SHORT",
+  "strategy": "PULLBACK_SHORT",
   "direction": "SHORT",
-  "conditions": { "ema_alignment": true, ... },
-  "snapshot": { "close": 75274.58, "rsi14": 42.1, ... },
+  "conditions": {
+    "ema_alignment": true,
+    "previous_ema_alignment": true,
+    "touched_ema20": true,
+    "rejected_ema20": true,
+    "rsi_rejected": true,
+    "macd_weakening": true,
+    "adx_trending": true
+  },
+  "snapshot": {
+    "close": 60951.64,
+    "high": 61176,
+    "ema20": 61481.1,
+    "ema50": 62784.21,
+    "ema200": 68138.97,
+    "rsi14": 43.68,
+    "macdHist": 98.9487,
+    "adx": 34.46,
+    "marketState": "DOWNTREND_NORMAL"
+  },
   "quality": {
     "cooldownBars": 6,
-    "barsSinceLastSignal": 9,
-    "transitionEntry": true
+    "barsSinceLastSignal": null,
+    "transitionEntry": false
   },
   "verification": {
-    "outcome": "WIN_TP3",
-    "exitPrice": 73514.8,
-    "exitReason": "TP3",
-    "exitBar": 7,
-    "checkedBars": 7,
-    "isComplete": true,
-    "rMultiple": 3.0,
-    "pnlPct": 2.338,
-    "tp1Hit": true,
-    "tp2Hit": true,
-    "tp3Hit": true,
+    "outcome": "PENDING_PROFIT",
+    "exitPrice": 60400,
+    "exitReason": "PENDING",
+    "exitBar": 4,
+    "checkedBars": 4,
+    "isComplete": false,
+    "rMultiple": 0.8,
+    "pnlPct": 0.9,
+    "tp1Hit": false,
+    "tp2Hit": false,
+    "tp3Hit": false,
     "slHit": false,
-    "mfe": 2213.99,
-    "mae": 0,
-    "levels": { "sl": 75861.17, "tp1": 74687.99, "tp2": 74101.39, "tp3": 73514.8, "slDist": 586.59 }
+    "mfe": 900,
+    "mae": 200,
+    "levels": {
+      "sl": 62000,
+      "tp1": 59900,
+      "tp2": 58900,
+      "tp3": 57900,
+      "slDist": 1048.36
+    }
+  },
+  "llm": {
+    "provider": "groq",
+    "model": "llama-3.3-70b-versatile",
+    "generatedAt": "2026-06-06T00:00:00.000Z",
+    "explanation": "Short natural-language explanation."
   }
 }
 ```
 
-近期訊號若後續 K 線尚未滿 `verifyBars`（預設 24 根），會標記為 `PENDING_PROFIT` 或 `PENDING_LOSS`。
-Pending 代表目前方向暫時有利或不利，但不列入正式勝率與平均 R。
+### Outcomes
 
----
-
-## 七、Dashboard API
-
-伺服器：`node src/scripts/dashboardServer.js`（port 3001，無需安裝 express）
-
-| Endpoint | 說明 |
+| Outcome | Meaning |
 |---|---|
-| `GET /api/symbols` | 目前支援幣種與資料檔狀態 |
-| `GET /api/signals?symbol=BTCUSDT` | 指定幣種的 `{symbol}_1h_verified.json` 全部訊號 |
-| `GET /api/klines?symbol=BTCUSDT` | 指定幣種 1h K 線（只回傳 EMA200 有值的部分） |
-| `GET /api/summary?symbol=BTCUSDT` | 指定幣種各策略勝率、平均 R 統計 |
+| `WIN_TP1` | TP1 was reached before final timeout. |
+| `WIN_TP2` | TP2 was reached before final timeout. |
+| `WIN_TP3` | TP3 was reached and the signal is complete. |
+| `LOSS` | SL was reached before TP1. |
+| `TIMEOUT_PROFIT` | Max verification window completed with positive R but no TP classification above. |
+| `TIMEOUT_LOSS` | Max verification window completed with non-positive R. |
+| `PENDING_PROFIT` | Not enough future candles yet; current temporary result is positive. |
+| `PENDING_LOSS` | Not enough future candles yet; current temporary result is non-positive. |
+| `NOT_FOUND` | Entry candle is not present in the provided candle array. |
+
+Pending signals are excluded from `summarize()` totals and win-rate calculations.
 
 ---
 
-## 八、目前樣本統計（2026-06-05）
+## 7. Pipeline Behavior
 
-| 幣種 | 策略 | 樣本數 | 勝率 | 平均 R |
-|---|---|---|---|---|
-| BTCUSDT | OBS_BIAS_SHORT | 82（完成）+ 16 pending | 79.3% | +2.105 |
-| BTCUSDT | TREND_SHORT | 4（完成）+ 1 pending | 50% | +1 |
-| BTCUSDT | OBS_BIAS_LONG | 1 | 0% | -1 |
-| ETHUSDT | OBS_BIAS_SHORT | 70（完成）+ 19 pending | 74.3% | +1.455 |
-| ETHUSDT | TREND_SHORT | 8（完成）+ 1 pending | 62.5% | +1.155 |
-| SOLUSDT | OBS_BIAS_SHORT | 74（完成）+ 19 pending | 75.7% | +1.871 |
-| SOLUSDT | TREND_SHORT | 7（完成）+ 2 pending | 71.4% | +1.719 |
+### Main Pipeline
 
-⚠️ OBS_BIAS 是看盤輔助與樣本累積用，不能和正式交易策略用同一標準解讀。
-Pending 不列入正式勝率與平均 R；它只表示目前後續走勢暫時有利或不利。
+`runPipeline(symbol)` performs:
+
+```text
+fetchMultiTimeframe(symbol)
+-> calcAllIndicators() for each timeframe
+-> save {symbol}_1h / 4h / 1d JSON
+-> generateSignals() on 1h data
+-> verifyAll() with maxBars = 24
+-> merge previous LLM explanations from history
+-> enrich selected signals with LLM explanations
+-> save {symbol}_1h_verified.json
+-> upsert {symbol}_1h_history.json
+```
+
+### Default Symbols
+
+```text
+BTCUSDT
+ETHUSDT
+SOLUSDT
+```
+
+Override with:
+
+```powershell
+$env:CHRONOS_SYMBOLS="BTCUSDT,ETHUSDT,SOLUSDT"
+```
+
+### Data Filenames
+
+| File | Meaning |
+|---|---|
+| `{symbol}_1h.json` | 1h candles with indicators. |
+| `{symbol}_4h.json` | 4h candles with indicators. |
+| `{symbol}_1d.json` | 1d candles with indicators. |
+| `{symbol}_1h_verified.json` | Current verified signal window for dashboard. |
+| `{symbol}_1h_history.json` | Persistent merged signal history. |
+| `{symbol}_daily_report.md` | Daily LLM or fallback report. |
+
+Example:
+
+```text
+btcusdt_1h.json
+ethusdt_1h_verified.json
+solusdt_daily_report.md
+```
 
 ---
 
-## 九、LLM 協作時的注意事項
+## 8. Cron Behavior
 
-1. **路徑寫法**：scripts 往上三層是根目錄（`../../../`），不是四層
-2. **指標 null 處理**：用 `== null`（同時涵蓋 undefined），不要用 `=== null`
-3. **資料型別**：Binance API 回傳 OHLCV 是 String，存檔前必須 `parseFloat()`
-4. **EMA200 需要 200 根暖機**：抓資料時 limit 設 300（1h）才有足夠的有效根數
-5. **新增幣種**：預設支援 `BTCUSDT`、`ETHUSDT`、`SOLUSDT`；新增幣種時請透過 `symbols.js` / `CHRONOS_SYMBOLS` 管理，避免重新硬寫
-6. **不要修改 data/ 下的 JSON**：這些是系統運行產出，應由腳本管理，不手動編輯
-7. **DOGEUSDT 暫時移出預設清單**：meme / 小幣波動結構不同，待專用策略完成後再納入主要觀察
+Default:
+
+```text
+CHRONOS_CRON_SCHEDULE = "2 * * * *"
+CHRONOS_CRON_TIMEZONE = "Asia/Taipei"
+CHRONOS_RUN_ON_STARTUP = true
+```
+
+Meaning:
+- Run once immediately when `npm run cron` starts, unless disabled.
+- Then run every hour at minute 2 in `Asia/Taipei`.
+- The run uses the latest closed 1h candle, not the unfinished current candle.
+- Overlapping cycles are skipped if the previous cycle is still running.
+
+Useful environment variables:
+
+```powershell
+$env:CHRONOS_CRON_SCHEDULE="2 * * * *"
+$env:CHRONOS_CRON_TIMEZONE="Asia/Taipei"
+$env:CHRONOS_RUN_ON_STARTUP="false"
+```
 
 ---
 
-## 十、下一步待辦（LLM 協作用）
+## 9. LLM Integration
 
-### Step 11（已完成）
-**自動定時抓資料（Cron Job）**
-- 套件：`node-cron`
-- 頻率：每小時一次（`0 * * * *`）
-- 動作：fetchMultiTimeframe → calcAllIndicators → generateSignals → verifyAll → saveJson
-- 入口：`src/scripts/cronJob.js`
-- Pipeline：`src/services/pipelineService.js`
+Supported providers:
 
-### Step 11.5（已完成）
-**訊號品質控管**
-- 趨勢策略只在條件剛成立時觸發
-- 同策略同方向預設 `cooldownBars = 6`
-- signal 新增 `quality` 欄位，記錄 cooldown 與 barsSinceLastSignal
+| Provider | Required env | Default model |
+|---|---|---|
+| OpenAI | `OPENAI_API_KEY` | `gpt-5-mini` |
+| Groq | `GROQ_API_KEY` | `llama-3.3-70b-versatile` |
 
-### Step 12（已完成）
-**多幣種擴展**
-- 將 symbol 從硬寫改為參數
-- 支援：BTCUSDT、ETHUSDT、SOLUSDT
-- 資料檔命名規則：`{symbol.toLowerCase()}_{tf}.json`
-- 新增：`src/utils/symbols.js`
-- Dashboard API 支援 `?symbol=BTCUSDT`
-- BTC 舊檔 `btc_*.json` 保留 fallback，方便過渡
+Provider resolution:
 
-### Step 13（已完成）
-**LLM 整合**
-- 每個訊號觸發時呼叫 OpenAI API 或 Groq API 生成自然語言解釋
-- 每日生成策略績效報告
+```text
+CHRONOS_LLM_PROVIDER=openai | groq | auto
+```
 
-補充：
-- `ChatGPT Plus` 與 `OpenAI API` 分開計費，不能直接把 Plus 訂閱當作 API 使用
-- OpenAI 請使用 `OPENAI_API_KEY`
-- Groq 請使用 `GROQ_API_KEY`
-- Groq 預設模型為 `llama-3.3-70b-versatile`，比 `openai/gpt-oss-20b` 更適合穩定輸出自然語言報告
-- Provider 可用 `CHRONOS_LLM_PROVIDER=openai` 或 `groq` 切換；不設定時自動依可用金鑰判斷
-- 預設只對 `signalType=TRADE` 的正式策略訊號產生少量逐筆解釋，OBS 訊號不逐筆呼叫 API
-- 預設每次 pipeline 最多產生 3 筆訊號解釋：`CHRONOS_LLM_MAX_EXPLANATIONS_PER_RUN=3`
-- 每日報告會把 OBS 以批次統計納入分析，包含策略摘要、近期樣本、代表性樣本與 observationAnalysis
-- 避免把完整 history 全部送入 LLM，以降低 token 與 429 風險
-- 若遇到 429，`llmService.js` 會做一次 backoff retry，仍失敗時停止本輪後續 LLM 呼叫
+If provider is `auto`:
+1. Use OpenAI when `OPENAI_API_KEY` exists.
+2. Otherwise use Groq when `GROQ_API_KEY` exists.
+3. Otherwise disable LLM and continue with local outputs.
 
-### Step 13.5（已完成）
-**OBS 觀察型方向預測**
-- 新增 `OBS_BIAS_LONG / OBS_BIAS_SHORT`
-- 每根 1H 收盤 K 依 EMA、RSI、MACD、ADX 做方向投票
-- 未滿 24 根後續 K 的驗證結果標記為 `PENDING_PROFIT / PENDING_LOSS`
-- Pending 不列入正式勝率與平均 R
+Default explanation behavior:
 
-### Step 14（下一個要做的）
-**PostgreSQL 遷移**
-- 替換 JSON 存檔
-- 支援複雜查詢（跨幣種、跨時間框架統計）
+```text
+CHRONOS_LLM_BATCH_EXPLANATIONS=true
+CHRONOS_LLM_EXPLAIN_SIGNALS=trade
+CHRONOS_LLM_MAX_EXPLANATIONS_PER_RUN=5
+CHRONOS_LLM_SKIP_PENDING=true
+CHRONOS_LLM_DELAY_MS=1200
+CHRONOS_LLM_RETRY_429_DELAY_MS=5000
+```
+
+Explanation modes:
+
+| Mode | Behavior |
+|---|---|
+| `trade` | Explain only formal `TRADE` signals. Default. |
+| `all` | Explain all signal types. High token and rate-limit risk. |
+| `observation` | Explain only OBS signals. Usually not recommended. |
+| `continuation` | Explain only continuation markers. |
+| `none` | Disable signal explanation selection. |
+
+Important:
+- ChatGPT Plus subscription is not the same as OpenAI API access.
+- OpenAI API requires an API key and separate billing.
+- Groq API requires `GROQ_API_KEY`.
+- LLM output is explanatory only and must not change signal logic.
+
+---
+
+## 10. Dashboard Behavior
+
+Run:
+
+```powershell
+cd backend
+npm run dashboard
+```
+
+Open:
+
+```text
+http://localhost:3001
+```
+
+API endpoints:
+
+| Endpoint | Description |
+|---|---|
+| `/api/symbols` | Supported symbols and data availability. |
+| `/api/klines?symbol=BTCUSDT` | 1h candles filtered after EMA200 warm-up. |
+| `/api/signals?symbol=BTCUSDT` | Verified signals for dashboard. |
+| `/api/summary?symbol=BTCUSDT` | Strategy summary from verified signals. |
+
+Dashboard features:
+- Symbol dropdown for BTC / ETH / SOL.
+- Candlestick overlay plus EMA lines.
+- Signal markers by signal type.
+- Latest signal list limited for readability.
+- Detail panel with SL/TP/MFE/MAE and LLM explanation.
+- Light/dark theme toggle.
+- Timestamps display in `Asia/Taipei`.
+
+Strategy display labels:
+
+| Strategy | UI label |
+|---|---|
+| `TREND_LONG` | trend long label |
+| `TREND_SHORT` | trend short label |
+| `PULLBACK_LONG` | pullback long label |
+| `PULLBACK_SHORT` | pullback short label |
+| `OVERSOLD_BOUNCE` | oversold bounce label |
+| `TREND_*_CONTINUATION` | continuation label |
+| `OBS_BIAS_*` | observation label |
+
+The exact visible labels are maintained in `backend/public/index.html`.
+
+---
+
+## 11. Local Test Snapshot
+
+Latest local signal test after adding PULLBACK strategies:
+
+```text
+Command:
+node backend/src/scripts/testSignals.js BTCUSDT
+
+Result:
+Signal logic passed.
+BTCUSDT local 300-candle window:
+- OBS_BIAS_SHORT: 98
+- PULLBACK_SHORT: 6
+- TREND_SHORT: 5
+- TREND_SHORT_CONTINUATION: 8
+```
+
+Additional local non-OBS counts:
+
+```text
+BTCUSDT: PULLBACK_SHORT 6, TREND_SHORT 5, TREND_SHORT_CONTINUATION 8
+ETHUSDT: PULLBACK_SHORT 6, TREND_SHORT 7, TREND_SHORT_CONTINUATION 10
+SOLUSDT: PULLBACK_SHORT 5, TREND_SHORT 9, TREND_SHORT_CONTINUATION 13
+```
+
+Interpretation:
+- Sample sizes are still small.
+- These numbers are useful for sanity checking only.
+- Do not use them as statistical evidence yet.
+
+---
+
+## 12. Commands
+
+From `backend/`:
+
+```powershell
+npm install
+npm run pipeline
+npm run pipeline -- BTCUSDT
+npm run verify -- BTCUSDT
+npm run report:daily -- BTCUSDT
+npm run test:signals -- BTCUSDT
+npm run dashboard
+npm run cron
+```
+
+With Groq:
+
+```powershell
+$env:GROQ_API_KEY="your_groq_key"
+$env:CHRONOS_LLM_PROVIDER="groq"
+npm run pipeline -- BTCUSDT
+```
+
+With OpenAI:
+
+```powershell
+$env:OPENAI_API_KEY="your_openai_key"
+$env:CHRONOS_LLM_PROVIDER="openai"
+npm run pipeline -- BTCUSDT
+```
+
+Disable LLM for a run by not setting provider API keys, or by setting:
+
+```powershell
+$env:CHRONOS_LLM_EXPLAIN_SIGNALS="none"
+```
+
+---
+
+## 13. LLM Collaboration Rules
+
+These rules are important for future agents:
+
+1. Scripts are under `backend/src/scripts/`. The project root from there is `../../../`.
+2. `Indicatorservice.js` currently uses a capital `I`. Do not rename it casually because imports depend on this casing.
+3. Indicator null checks should use `== null` only when intentionally covering both `null` and `undefined`; otherwise use the existing `hasNumber()` helper.
+4. Binance OHLCV values can arrive as strings. Convert to numbers before saving.
+5. EMA200 requires a 200-candle warm-up. Fetch enough data, currently 300 for 1h.
+6. Do not hand-edit generated JSON under `data/` unless the user explicitly asks.
+7. Keep signal strategies isolated functions so each strategy can be evaluated separately.
+8. Do not merge OBS statistics with formal TRADE strategy statistics.
+9. Do not treat `CONTINUATION` markers as fresh formal entries.
+10. Preserve `llm.explanation` when re-verifying the same signal id.
+11. Keep cron on closed candles only. Do not generate signals from unfinished 1h candles.
+12. If adding new strategies, update both `README.md` and this file.
+13. If adding new dashboard labels, update `STRATEGY_LABELS` in `backend/public/index.html`.
+14. Prefer English comments in source files to avoid terminal encoding issues.
+15. Preserve Traditional Chinese user-facing dashboard/log text unless the user asks otherwise.
+
+---
+
+## 14. Next Work Items
+
+### Step 14
+
+PostgreSQL migration:
+- Replace JSON persistence.
+- Keep history and current verified windows queryable.
+- Support cross-symbol, cross-strategy, and market-state statistics.
+- Preserve the current JSON workflow until migration is verified.
 
 ### Step 15
-**meme / 小幣專用策略**
-- DOGEUSDT 暫不列入預設觀察清單
-- 未來針對 meme / 小幣建立高波動、情緒盤、突破回落等專用策略後再加入
+
+Dedicated meme / small-cap strategy research:
+- DOGEUSDT was replaced by SOLUSDT because current major-coin trend logic produced too few useful DOGE samples.
+- If DOGE or smaller coins are reintroduced, do not assume BTC/ETH/SOL rules are optimal.
+- Consider volatility breakout, range reversion, liquidity filters, and volume-spike logic.
+
+### Step 16
+
+Non-business-logic cleanup:
+- Clean remaining mojibake prompt strings in source files.
+- Keep dashboard visible text in Traditional Chinese.
+- Keep source comments in English.

@@ -230,7 +230,114 @@ function strategyTrendShort(kline) {
   };
 }
 
-// Trend strategies use a transition filter; bounce setups are event-like and do not use it.
+// Strategy: bearish pullback continuation.
+// Fires when the broader EMA structure remains bearish and price recently
+// retested EMA20 from below before being rejected back under it.
+function strategyPullbackShort(kline, index, allKlines) {
+  if (index < 1) return null;
+
+  const prevKline = allKlines[index - 1];
+  const { close, high } = kline;
+  const { ema20, ema50, ema200, rsi14, macdHist, adx, marketState } = kline.indicators || {};
+  const {
+    ema20: prevEma20,
+    ema50: prevEma50,
+    ema200: prevEma200,
+    macdHist: prevMacdHist,
+  } = prevKline.indicators || {};
+
+  if (
+    !hasNumber(close) ||
+    !hasNumber(high) ||
+    !hasNumber(ema20) ||
+    !hasNumber(ema50) ||
+    !hasNumber(ema200) ||
+    !hasNumber(rsi14) ||
+    !hasNumber(macdHist) ||
+    !hasNumber(prevKline.close) ||
+    !hasNumber(prevKline.high) ||
+    !hasNumber(prevEma20) ||
+    !hasNumber(prevEma50) ||
+    !hasNumber(prevEma200)
+  ) {
+    return null;
+  }
+
+  const conditions = {
+    ema_alignment: ema20 < ema50 && ema50 < ema200,
+    previous_ema_alignment: prevEma20 < prevEma50 && prevEma50 < prevEma200,
+    touched_ema20: high >= ema20 || prevKline.high >= prevEma20 || prevKline.close >= prevEma20 * 0.99,
+    rejected_ema20: close < ema20,
+    rsi_rejected: rsi14 >= 35 && rsi14 <= 60,
+    macd_weakening: macdHist <= 0 || (hasNumber(prevMacdHist) && macdHist < prevMacdHist),
+    adx_trending: !hasNumber(adx) || adx >= 20,
+  };
+
+  if (!allConditionsPassed(conditions)) return null;
+
+  return {
+    strategy: "PULLBACK_SHORT",
+    direction: "SHORT",
+    conditions,
+    snapshot: { close, high, ema20, ema50, ema200, rsi14, macdHist, adx, marketState },
+  };
+}
+
+// Strategy: bullish pullback continuation.
+// Fires when the broader EMA structure remains bullish and price recently tested
+// EMA20 before reclaiming it. This adds formal trade samples without entering on
+// every candle in an existing trend.
+function strategyPullbackLong(kline, index, allKlines) {
+  if (index < 1) return null;
+
+  const prevKline = allKlines[index - 1];
+  const { close, low } = kline;
+  const { ema20, ema50, ema200, rsi14, macdHist, adx, marketState } = kline.indicators || {};
+  const {
+    ema20: prevEma20,
+    ema50: prevEma50,
+    ema200: prevEma200,
+    macdHist: prevMacdHist,
+  } = prevKline.indicators || {};
+
+  if (
+    !hasNumber(close) ||
+    !hasNumber(low) ||
+    !hasNumber(ema20) ||
+    !hasNumber(ema50) ||
+    !hasNumber(ema200) ||
+    !hasNumber(rsi14) ||
+    !hasNumber(macdHist) ||
+    !hasNumber(prevKline.close) ||
+    !hasNumber(prevKline.low) ||
+    !hasNumber(prevEma20) ||
+    !hasNumber(prevEma50) ||
+    !hasNumber(prevEma200)
+  ) {
+    return null;
+  }
+
+  const conditions = {
+    ema_alignment: ema20 > ema50 && ema50 > ema200,
+    previous_ema_alignment: prevEma20 > prevEma50 && prevEma50 > prevEma200,
+    touched_ema20: low <= ema20 || prevKline.low <= prevEma20 || prevKline.close <= prevEma20 * 1.01,
+    reclaimed_ema20: close > ema20,
+    rsi_recovered: rsi14 >= 40 && rsi14 <= 62,
+    macd_recovering: macdHist >= 0 || (hasNumber(prevMacdHist) && macdHist > prevMacdHist),
+    adx_trending: !hasNumber(adx) || adx >= 20,
+  };
+
+  if (!allConditionsPassed(conditions)) return null;
+
+  return {
+    strategy: "PULLBACK_LONG",
+    direction: "LONG",
+    conditions,
+    snapshot: { close, low, ema20, ema50, ema200, rsi14, macdHist, adx, marketState },
+  };
+}
+
+// Trend strategies use a transition filter; event-like setups do not use it.
 function isTrendStrategy(strategyName) {
   return strategyName === "TREND_LONG" || strategyName === "TREND_SHORT";
 }
@@ -292,8 +399,10 @@ function generateSignals(klines, options = {}) {
   const mergedOptions = { ...DEFAULT_SIGNAL_OPTIONS, ...options };
   const strategies = [
     strategyTrendLong,
+    strategyPullbackLong,
     strategyOversoldBounce,
     strategyTrendShort,
+    strategyPullbackShort,
   ];
 
   const signals = [];
@@ -367,6 +476,8 @@ function generateSignals(klines, options = {}) {
 module.exports = {
   generateSignals,
   strategyObservationBias,
+  strategyPullbackLong,
+  strategyPullbackShort,
   strategyTrendContinuation,
   strategyTrendLong,
   strategyOversoldBounce,

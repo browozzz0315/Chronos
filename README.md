@@ -13,7 +13,7 @@ Chronos 是一個小型研究型 Side Project，目標是建立一套「可記�
 - **自動抓取** Binance K 線資料（1h / 4h / 1d，支援多幣種）
 - **計算技術指標**：EMA20/50/200、RSI14、MACD、ATR、ADX、Bollinger Bands
 - **市場狀態分類**：趨勢盤 / 震盪盤 / 高低波動，確保策略在正確環境下統計
-- **規則型訊號產生**：三個策略（趨勢順勢做多/空、超賣反彈）
+- **規則型訊號產生**：趨勢順勢、回踩/回抽、超賣反彈
 - **順勢延續標記**：在趨勢條件持續成立時產生 TREND_LONG_CONTINUATION / TREND_SHORT_CONTINUATION
 - **觀察型方向預測**：每根 1H 收盤 K 產生 OBS_BIAS_LONG / OBS_BIAS_SHORT，累積看盤輔助樣本
 - **延遲驗證系統**：自動計算每筆訊號的 R 倍數、MFE、MAE、出場原因
@@ -148,6 +148,9 @@ EMA 多頭排列 + RSI 45~65 + 收盤在 EMA20 上方 + MACD 向上
 ### TREND_SHORT（趨勢順勢做空）
 EMA 空頭排列 + RSI 35~55 + 收盤在 EMA20 下方 + MACD 向下
 
+### PULLBACK_LONG / PULLBACK_SHORT（趨勢回踩 / 回抽）
+大趨勢 EMA 排列仍成立時，價格回測 EMA20 附近後重新回到順勢方向，用於補捉趨勢已成立後的二次進場點。
+
 ### TREND_LONG_CONTINUATION / TREND_SHORT_CONTINUATION（順勢延續）
 沿用 TREND_LONG / TREND_SHORT 的條件，但只在上一根與當根都成立時標記。
 用途是看盤輔助，不等同新的正式進場點，並與正式策略分開統計。
@@ -219,6 +222,7 @@ RSI < 30 + 成交量放大 + 大趨勢偏多（收盤在 EMA200 上方）
 - [x] Step 12：多幣種擴展（ETH、SOL）
 - [x] Step 13：LLM 整合（訊號解釋 / 每日報告）
 - [x] Step 13.5：OBS 觀察型方向預測與 pending 驗證
+- [x] Step 13.6：PULLBACK_LONG / PULLBACK_SHORT 趨勢回踩正式訊號
 - [ ] Step 14：PostgreSQL 資料庫遷移
 
 ---
