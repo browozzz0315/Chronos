@@ -236,6 +236,8 @@ const DISPLAY_TIMEZONE = 'Asia/Taipei';
 const STRATEGY_LABELS = {
   TREND_LONG: '順勢多',
   TREND_SHORT: '順勢空',
+  TREND_LONG_CONTINUATION: '多方延續',
+  TREND_SHORT_CONTINUATION: '空方延續',
   OVERSOLD_BOUNCE: '超賣反彈',
   OBS_BIAS_LONG: '觀察多',
   OBS_BIAS_SHORT: '觀察空',
@@ -361,6 +363,15 @@ function strategyLabel(strategy) {
   return STRATEGY_LABELS[strategy] || strategy;
 }
 
+function signalTypeLabel(signalType) {
+  const map = {
+    TRADE: '進場',
+    CONTINUATION: '延續',
+    OBSERVATION: '觀察',
+  };
+  return map[signalType || 'TRADE'] || signalType;
+}
+
 // Formatting
 function fmtTime(ms) {
   return new Date(ms).toLocaleString('zh-TW', {
@@ -439,7 +450,7 @@ function renderSignalList(signals) {
           <span class="signal-strategy direction-${sig.direction}" title="${sig.strategy}">${strategyLabel(sig.strategy)}</span>
           <span class="signal-outcome outcome-${outcome}">${outcomeLabel(outcome)}</span>
         </div>
-        <div class="signal-meta">${fmtTime(sig.openTime)}</div>
+        <div class="signal-meta">${signalTypeLabel(sig.signalType)} · ${fmtTime(sig.openTime)}</div>
         <div style="display:flex;justify-content:space-between;margin-top:4px">
           <span class="stat-label">@${sig.entryPrice.toLocaleString()}</span>
           <span class="signal-r ${rClass}">${fmtR(r)}</span>
@@ -562,13 +573,20 @@ const signalMarkerPlugin = {
       const anchor = marker.direction === 'LONG'
         ? yScale.getPixelForValue(candle.low) + 10
         : yScale.getPixelForValue(candle.high) - 10;
-      const size = 5;
+      const size = marker.signalType === 'CONTINUATION' ? 4 : 5;
 
       ctx.fillStyle = color;
       ctx.strokeStyle = getCssVar('--bg');
       ctx.lineWidth = 2;
       ctx.beginPath();
-      if (marker.direction === 'LONG') {
+      if (marker.signalType === 'CONTINUATION') {
+        ctx.moveTo(x, anchor - size);
+        ctx.lineTo(x - size, anchor);
+        ctx.lineTo(x, anchor + size);
+        ctx.lineTo(x + size, anchor);
+      } else if (marker.signalType === 'OBSERVATION') {
+        ctx.arc(x, anchor, 3, 0, Math.PI * 2);
+      } else if (marker.direction === 'LONG') {
         ctx.moveTo(x, anchor - size);
         ctx.lineTo(x - size, anchor + size);
         ctx.lineTo(x + size, anchor + size);
@@ -588,6 +606,10 @@ const signalMarkerPlugin = {
 Chart.register(candlestickPlugin, signalMarkerPlugin);
 
 function markerColor(marker, colors) {
+  if (marker.signalType === 'CONTINUATION') {
+    return marker.direction === 'LONG' ? colors.green : colors.red;
+  }
+
   const outcome = marker.outcome || '';
   if (outcome.startsWith('WIN')) return colors.green;
   if (outcome === 'LOSS' || outcome.endsWith('LOSS')) return colors.red;
@@ -610,7 +632,13 @@ function renderChart(klines, signals) {
   const signalPoints = klines.map(k => {
     const sig = signals.find(s => s.openTime === k.openTime);
     if (!sig) return null;
-    return { price: sig.entryPrice, direction: sig.direction, outcome: sig.verification?.outcome };
+    return {
+      price: sig.entryPrice,
+      direction: sig.direction,
+      outcome: sig.verification?.outcome,
+      signalType: sig.signalType || 'TRADE',
+      strategy: sig.strategy,
+    };
   });
 
   if (priceChart) priceChart.destroy();
@@ -648,7 +676,7 @@ function renderChart(klines, signals) {
               const idx = items[0]?.dataIndex;
               const sig = signalPoints[idx];
               if (!sig) return '';
-              return `\n▶ ${sig.direction} Signal\n  ${sig.outcome ?? 'PENDING'}`;
+              return `\n▶ ${signalTypeLabel(sig.signalType)} ${sig.direction}\n  ${sig.strategy}\n  ${sig.outcome ?? 'PENDING'}`;
             }
           }
         }

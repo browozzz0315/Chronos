@@ -99,16 +99,23 @@ function shouldExplainSignal(signal, options) {
   if (options.skipPending && isPendingSignal(signal)) return false;
   if (options.mode === "all") return true;
   if (options.mode === "observation") return signal.signalType === "OBSERVATION";
-  return signal.signalType !== "OBSERVATION";
+  if (options.mode === "continuation") return signal.signalType === "CONTINUATION";
+  return !signal.signalType || signal.signalType === "TRADE";
+}
+
+function explanationPriority(signal) {
+  if (!signal.signalType || signal.signalType === "TRADE") return 2;
+  if (signal.signalType === "CONTINUATION") return 1;
+  return 0;
 }
 
 function selectSignalsForExplanation(signals, options) {
   return [...signals]
     .filter((signal) => shouldExplainSignal(signal, options))
     .sort((a, b) => {
-      const aTrade = a.signalType === "OBSERVATION" ? 0 : 1;
-      const bTrade = b.signalType === "OBSERVATION" ? 0 : 1;
-      if (aTrade !== bTrade) return bTrade - aTrade;
+      const aPriority = explanationPriority(a);
+      const bPriority = explanationPriority(b);
+      if (aPriority !== bPriority) return bPriority - aPriority;
 
       const aComplete = a.verification?.isComplete ? 1 : 0;
       const bComplete = b.verification?.isComplete ? 1 : 0;

@@ -14,6 +14,7 @@ Chronos 是一個小型研究型 Side Project，目標是建立一套「可記�
 - **計算技術指標**：EMA20/50/200、RSI14、MACD、ATR、ADX、Bollinger Bands
 - **市場狀態分類**：趨勢盤 / 震盪盤 / 高低波動，確保策略在正確環境下統計
 - **規則型訊號產生**：三個策略（趨勢順勢做多/空、超賣反彈）
+- **順勢延續標記**：在趨勢條件持續成立時產生 TREND_LONG_CONTINUATION / TREND_SHORT_CONTINUATION
 - **觀察型方向預測**：每根 1H 收盤 K 產生 OBS_BIAS_LONG / OBS_BIAS_SHORT，累積看盤輔助樣本
 - **延遲驗證系統**：自動計算每筆訊號的 R 倍數、MFE、MAE、出場原因
 - **LLM 解釋與報告**：支援 OpenAI / Groq，為訊號生成自然語言解釋與每日報告
@@ -73,6 +74,7 @@ LLM 用量控制：
 - 預設每次每個幣種最多產生 5 筆訊號解釋：`CHRONOS_LLM_MAX_EXPLANATIONS_PER_RUN=5`
 - OBS 訊號會以批次統計、近期樣本、代表性樣本納入每日報告分析，不會每筆各打一個 API call
 - 可用 `CHRONOS_LLM_EXPLAIN_SIGNALS=all` 改成全部訊號，但不建議在 OBS 樣本很多時使用
+- 可用 `CHRONOS_LLM_EXPLAIN_SIGNALS=continuation` 只解釋順勢延續訊號
 - 只更新單一幣種可用：`npm run pipeline -- BTCUSDT`；更新預設三幣種可直接用：`npm run pipeline`
 
 Cron / 時間顯示：
@@ -146,6 +148,10 @@ EMA 多頭排列 + RSI 45~65 + 收盤在 EMA20 上方 + MACD 向上
 ### TREND_SHORT（趨勢順勢做空）
 EMA 空頭排列 + RSI 35~55 + 收盤在 EMA20 下方 + MACD 向下
 
+### TREND_LONG_CONTINUATION / TREND_SHORT_CONTINUATION（順勢延續）
+沿用 TREND_LONG / TREND_SHORT 的條件，但只在上一根與當根都成立時標記。
+用途是看盤輔助，不等同新的正式進場點，並與正式策略分開統計。
+
 ### OVERSOLD_BOUNCE（超賣反彈）
 RSI < 30 + 成交量放大 + 大趨勢偏多（收盤在 EMA200 上方）
 
@@ -186,6 +192,8 @@ RSI < 30 + 成交量放大 + 大趨勢偏多（收盤在 EMA200 上方）
 | 左下 | 訊號列表（點擊查看詳情） |
 | 右上 | K 線圖 + EMA 三線 + 訊號標記點 |
 | 右下 | 點擊訊號後顯示完整 SL/TP/MFE/MAE |
+
+圖表標記：正式策略為三角形、順勢延續為菱形、OBS 觀察訊號為小圓點。
 
 ---
 

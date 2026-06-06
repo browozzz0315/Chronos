@@ -14,6 +14,7 @@ const DEFAULT_SIGNAL_OPTIONS = {
   symbol: "BTCUSDT",
   cooldownBars: 6,                // Same strategy and direction must wait N candles before firing again.
   requireTrendTransition: true,   // Trend strategies only fire when conditions just changed from false to true.
+  includeContinuationSignals: true, // Watchlist helper: mark candles where an existing trend setup remains valid.
   includeObservationSignals: true, // Watchlist helper: produce directional observations on closed candles.
   observationMinScore: 2,          // Minimum absolute score required for an OBS_BIAS signal.
 };
@@ -234,6 +235,36 @@ function isTrendStrategy(strategyName) {
   return strategyName === "TREND_LONG" || strategyName === "TREND_SHORT";
 }
 
+function strategyTrendContinuation(kline, index, allKlines) {
+  if (index < 1) return null;
+
+  const trendStrategies = [strategyTrendLong, strategyTrendShort];
+
+  for (const strategy of trendStrategies) {
+    const current = strategy(kline, index, allKlines);
+    if (!current) continue;
+
+    const previous = strategy(allKlines[index - 1], index - 1, allKlines);
+    if (!previous) continue;
+
+    return {
+      ...current,
+      strategy: `${current.strategy}_CONTINUATION`,
+      signalType: "CONTINUATION",
+      conditions: {
+        ...current.conditions,
+        previous_candle_also_valid: true,
+      },
+      snapshot: {
+        ...current.snapshot,
+        sourceStrategy: current.strategy,
+      },
+    };
+  }
+
+  return null;
+}
+
 // Build the final signal shape and keep conditions / snapshot / quality for dashboard and verification.
 function buildSignal(result, kline, options, quality) {
   return {
@@ -308,6 +339,16 @@ function generateSignals(klines, options = {}) {
       lastSignalIndex.set(signalKey, i);
     }
 
+    if (mergedOptions.includeContinuationSignals) {
+      const continuation = strategyTrendContinuation(kline, i, klines);
+      if (continuation) {
+        signals.push(buildSignal(continuation, kline, mergedOptions, {
+          signalType: "CONTINUATION",
+          sourceStrategy: continuation.snapshot.sourceStrategy,
+        }));
+      }
+    }
+
     if (mergedOptions.includeObservationSignals) {
       const observation = strategyObservationBias(kline, i, klines, mergedOptions);
       if (observation) {
@@ -326,6 +367,7 @@ function generateSignals(klines, options = {}) {
 module.exports = {
   generateSignals,
   strategyObservationBias,
+  strategyTrendContinuation,
   strategyTrendLong,
   strategyOversoldBounce,
   strategyTrendShort,
